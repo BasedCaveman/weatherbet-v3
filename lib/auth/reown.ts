@@ -1,6 +1,6 @@
 import { createAppKit } from '@reown/appkit/react'
 import { EthersAdapter } from '@reown/appkit-adapter-ethers'
-import { megaEthTestnet } from '@reown/appkit/networks'
+import { megaethTestnet } from '@reown/appkit/networks'
 
 // Get project ID from environment
 const projectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID
