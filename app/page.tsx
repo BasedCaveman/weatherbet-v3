@@ -1,4 +1,12 @@
-import AuthButton from "@/components/auth/AuthButton";
+'use client';
+
+import dynamic from 'next/dynamic';
+
+// Dynamically import AuthButton with SSR disabled
+const AuthButton = dynamic(() => import('@/components/auth/AuthButton'), {
+  ssr: false,
+  loading: () => <div className="h-10 w-32 bg-gray-200 rounded animate-pulse" />
+});
 
 export default function Home() {
   return (
@@ -16,7 +24,6 @@ export default function Home() {
             No wallet needed • Simple sign-in with Apple or Google
           </p>
         </div>
-
         <div className="mt-16 grid text-center lg:grid-cols-3 gap-8">
           <div className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100">
             <h2 className="mb-3 text-2xl font-semibold">
@@ -26,7 +33,6 @@ export default function Home() {
               Bet on weather in major cities around the world
             </p>
           </div>
-
           <div className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100">
             <h2 className="mb-3 text-2xl font-semibold">
               💰 Your Currency
@@ -35,7 +41,6 @@ export default function Home() {
               See prices in your local currency automatically
             </p>
           </div>
-
           <div className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100">
             <h2 className="mb-3 text-2xl font-semibold">
               ⚡ Instant
