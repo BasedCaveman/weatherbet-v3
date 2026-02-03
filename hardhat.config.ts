@@ -16,7 +16,7 @@ const config: HardhatUserConfig = {
     // MegaETH Timothy Testnet
     megaeth_testnet: {
       url: "https://rpc-testnet.megaeth.com",
-      chainId: 77777, // MegaETH testnet chain ID
+      chainId: 6343, // MegaETH testnet chain ID
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
     },
     // MegaETH Mainnet (when available)
@@ -37,7 +37,7 @@ const config: HardhatUserConfig = {
     customChains: [
       {
         network: "megaeth_testnet",
-        chainId: 77777,
+        chainId: 6343,
         urls: {
           apiURL: "https://explorer-testnet.megaeth.com/api",
           browserURL: "https://explorer-testnet.megaeth.com",
