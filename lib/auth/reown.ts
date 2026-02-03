@@ -1,6 +1,6 @@
 import { createAppKit } from '@reown/appkit/react'
 import { EthersAdapter } from '@reown/appkit-adapter-ethers'
-import { megaETHTestnet } from '@reown/appkit/networks'
+import { megaEthTestnet } from '@reown/appkit/networks'
 
 // Get project ID from environment
 const projectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID
@@ -11,8 +11,8 @@ if (!projectId) {
 
 // Define MegaETH testnet
 const megaETH = {
-  id: 77777,
-  name: 'MegaETH Timothy Testnet',
+  id: 6343,
+  name: 'MegaETH Testnet v2',
   network: 'megaeth-testnet',
   nativeCurrency: {
     decimals: 18,
