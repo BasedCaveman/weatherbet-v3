@@ -27,9 +27,9 @@ export function ReownProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const initProvider = async () => {
-      if (walletProvider && isConnected) {
-        try {
-          const ethersProvider = new BrowserProvider(walletProvider)
+     if (walletProvider && isConnected) {
+  try {
+    const ethersProvider = new BrowserProvider(walletProvider as any)
           const ethersSigner = await ethersProvider.getSigner()
           setProvider(ethersProvider)
           setSigner(ethersSigner)
