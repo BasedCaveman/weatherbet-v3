@@ -5,11 +5,12 @@ import { useMarkets } from '../hooks/useOrderBook';
 import { useLocation } from '../hooks/useLocation';
 import { useCurrency } from '../hooks/useCurrency';
 import { useAuth } from '../hooks/useAuth';
+import { useTranslation } from '../hooks/useTranslation';
 import MarketCard from '../components/MarketCard';
 
 const AuthButton = dynamic(() => import('../components/auth/AuthButton'), {
   ssr: false,
-  loading: () => <div className="h-10 w-32 bg-gray-200 rounded animate-pulse" />
+  loading: () => <div className="h-12 w-32 bg-gray-700 rounded-xl animate-pulse" />
 });
 
 export default function Home() {
@@ -17,24 +18,7 @@ export default function Home() {
   const { location, loading: locationLoading } = useLocation();
   const { formatCurrency, convertFromUSD } = useCurrency(location?.currency || 'USD');
   const { isConnected, connect } = useAuth();
-
-  // Find nearest market based on user location
-  const getNearestMarket = () => {
-    if (!location || markets.length === 0) return null;
-    
-    // Simple distance calculation (could be improved with Haversine formula)
-    let nearest = markets[0];
-    // For now, just return the first active market
-    return markets.find(m => !m.resolved) || markets[0];
-  };
-
-  const nearestMarket = getNearestMarket();
-
-  const handleBet = async (marketId: number, isYes: boolean, amount: number) => {
-    console.log(`Placing bet: Market ${marketId}, ${isYes ? 'YES' : 'NO'}, Amount: ${amount}`);
-    // TODO: Implement actual betting logic
-    alert(`Bet placed! Market: ${marketId}, Side: ${isYes ? 'YES' : 'NO'}, Amount: ${location?.currencySymbol}${amount}`);
-  };
+  const { t } = useTranslation();
 
   const formatLocalCurrency = (usdAmount: number) => {
     const localAmount = convertFromUSD(usdAmount);
@@ -42,23 +26,22 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-gray-950">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+      <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-50">
+        <div className="max-w-lg mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <span className="text-2xl">🌦️</span>
-            <span className="font-bold text-xl">WeatherBet</span>
+            <span className="text-3xl">🌦️</span>
+            <span className="font-bold text-xl text-white">{t('app.name')}</span>
           </div>
           
-          <div className="flex items-center gap-4">
-            {/* Location Indicator */}
+          <div className="flex items-center gap-3">
             {location && (
-              <div className="hidden sm:flex items-center gap-2 text-sm text-gray-600">
+              <div className="hidden sm:flex items-center gap-1 text-sm text-gray-400 bg-gray-800 px-3 py-1 rounded-full">
                 <span>📍</span>
-                <span>{location.city}, {location.countryCode}</span>
-                <span className="text-gray-400">|</span>
-                <span>{location.currencySymbol} {location.currency}</span>
+                <span>{location.countryCode}</span>
+                <span>•</span>
+                <span>{location.currencySymbol}</span>
               </div>
             )}
             <AuthButton />
@@ -66,100 +49,72 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="bg-gradient-to-b from-blue-600 to-blue-700 text-white py-16">
-        <div className="max-w-6xl mx-auto px-4 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4">
-            Bet on Weather
+      {/* Hero - Mobile Optimized */}
+      <section className="bg-gradient-to-b from-emerald-900 via-teal-900 to-gray-950 py-10 px-4">
+        <div className="max-w-lg mx-auto text-center">
+          <h1 className="text-4xl md:text-5xl font-black text-white mb-4 leading-tight">
+            {t('hero.title')}
           </h1>
-          <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
-            Predict rainfall and temperature in cities worldwide. 
-            Win if you're right!
+          <p className="text-lg text-emerald-200 mb-6">
+            {t('hero.subtitle')}
           </p>
           
-          {/* Location-based welcome */}
           {!locationLoading && location && (
-            <div className="inline-flex items-center gap-2 bg-blue-500/30 px-4 py-2 rounded-full text-blue-100">
+            <div className="inline-flex items-center gap-2 bg-gray-800/50 px-4 py-2 rounded-full text-emerald-300 text-sm">
               <span>📍</span>
-              <span>Welcome from {location.city}!</span>
+              <span>{t('hero.welcome')} {location.city}</span>
               <span>•</span>
-              <span>Prices shown in {location.currency}</span>
+              <span>{t('hero.pricesIn')} {location.currency}</span>
             </div>
           )}
         </div>
       </section>
 
-      {/* Featured Market (Nearest to User) */}
-      {nearestMarket && (
-        <section className="max-w-6xl mx-auto px-4 -mt-8 relative z-10">
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-yellow-500">⭐</span>
-              <h2 className="text-lg font-semibold text-gray-900">Featured Market</h2>
-              {location && (
-                <span className="text-sm text-gray-500">• Near {location.city}</span>
-              )}
-            </div>
-            
-            <div className="max-w-md mx-auto">
-              <MarketCard
-                market={nearestMarket}
-                currencySymbol={location?.currencySymbol || '$'}
-                formatCurrency={formatLocalCurrency}
-                onBet={handleBet}
-                isConnected={isConnected}
-                onConnect={connect}
-              />
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* All Markets */}
-      <section className="max-w-6xl mx-auto px-4 py-12">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">All Markets</h2>
-        
+      {/* Markets */}
+      <section className="max-w-lg mx-auto px-4 py-8 -mt-4">
         {marketsLoading && (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-white rounded-xl p-6 animate-pulse">
-                <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
-                <div className="h-4 bg-gray-200 rounded w-2/3 mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+          <div className="space-y-6">
+            {[1, 2].map((i) => (
+              <div key={i} className="bg-gray-900 rounded-3xl p-6 animate-pulse">
+                <div className="h-8 bg-gray-700 rounded w-1/2 mb-4"></div>
+                <div className="h-6 bg-gray-700 rounded w-3/4 mb-6"></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="h-32 bg-gray-700 rounded-2xl"></div>
+                  <div className="h-32 bg-gray-700 rounded-2xl"></div>
+                </div>
               </div>
             ))}
           </div>
         )}
         
         {marketsError && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-            <p>Error loading markets: {marketsError}</p>
+          <div className="bg-red-900/30 border border-red-700 rounded-2xl p-6 text-center">
+            <p className="text-red-400 text-lg mb-3">{t('error.loading')}</p>
             <button 
               onClick={() => window.location.reload()}
-              className="mt-2 text-sm underline"
+              className="px-6 py-2 bg-red-600 text-white rounded-xl font-medium"
             >
-              Try again
+              {t('error.tryAgain')}
             </button>
           </div>
         )}
         
         {!marketsLoading && !marketsError && markets.length === 0 && (
-          <div className="bg-gray-100 rounded-lg p-8 text-center">
-            <p className="text-gray-600 text-lg">No markets available yet.</p>
-            <p className="text-gray-500 mt-2">Check back soon!</p>
+          <div className="bg-gray-900 rounded-3xl p-10 text-center">
+            <span className="text-6xl mb-4 block">🌤️</span>
+            <p className="text-gray-300 text-xl mb-2">{t('error.noMarkets')}</p>
+            <p className="text-gray-500">{t('error.checkBack')}</p>
           </div>
         )}
 
         {!marketsLoading && !marketsError && markets.length > 0 && (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-6">
             {markets.map((market) => (
               <MarketCard
                 key={market.id}
                 market={market}
                 currencySymbol={location?.currencySymbol || '$'}
                 formatCurrency={formatLocalCurrency}
-                onBet={handleBet}
-                isConnected={isConnected}
                 onConnect={connect}
               />
             ))}
@@ -168,53 +123,55 @@ export default function Home() {
       </section>
 
       {/* How It Works */}
-      <section className="bg-white border-t border-gray-200 py-16">
-        <div className="max-w-6xl mx-auto px-4">
-          <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">How It Works</h2>
+      <section className="bg-gray-900 py-12 px-4 mt-8">
+        <div className="max-w-lg mx-auto">
+          <h2 className="text-2xl font-bold text-white mb-8 text-center">
+            {t('how.title')}
+          </h2>
           
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="space-y-6">
+            <div className="flex items-start gap-4">
+              <div className="w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center flex-shrink-0">
                 <span className="text-2xl">🔐</span>
               </div>
-              <h3 className="font-semibold text-lg mb-2">1. Sign In</h3>
-              <p className="text-gray-600">
-                Use your Apple or Google account. No wallet setup needed.
-              </p>
+              <div>
+                <h3 className="font-bold text-lg text-white mb-1">{t('how.step1.title')}</h3>
+                <p className="text-gray-400">{t('how.step1.desc')}</p>
+              </div>
             </div>
             
-            <div className="text-center">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="flex items-start gap-4">
+              <div className="w-14 h-14 bg-yellow-500 rounded-2xl flex items-center justify-center flex-shrink-0">
                 <span className="text-2xl">🎯</span>
               </div>
-              <h3 className="font-semibold text-lg mb-2">2. Pick a Side</h3>
-              <p className="text-gray-600">
-                Choose YES or NO on whether the weather will exceed the average.
-              </p>
+              <div>
+                <h3 className="font-bold text-lg text-white mb-1">{t('how.step2.title')}</h3>
+                <p className="text-gray-400">{t('how.step2.desc')}</p>
+              </div>
             </div>
             
-            <div className="text-center">
-              <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="flex items-start gap-4">
+              <div className="w-14 h-14 bg-green-500 rounded-2xl flex items-center justify-center flex-shrink-0">
                 <span className="text-2xl">💰</span>
               </div>
-              <h3 className="font-semibold text-lg mb-2">3. Win</h3>
-              <p className="text-gray-600">
-                If you're right, you win! Payouts are automatic.
-              </p>
+              <div>
+                <h3 className="font-bold text-lg text-white mb-1">{t('how.step3.title')}</h3>
+                <p className="text-gray-400">{t('how.step3.desc')}</p>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-gray-400 py-8">
-        <div className="max-w-6xl mx-auto px-4 text-center">
-          <p className="flex items-center justify-center gap-2">
-            <span>🌦️</span>
-            <span>WeatherBet</span>
+      <footer className="bg-gray-950 border-t border-gray-800 py-8">
+        <div className="max-w-lg mx-auto px-4 text-center">
+          <p className="flex items-center justify-center gap-2 text-gray-400">
+            <span className="text-2xl">🌦️</span>
+            <span className="font-bold text-white">{t('app.name')}</span>
           </p>
-          <p className="text-sm mt-2">
-            Decentralized weather prediction markets
+          <p className="text-sm text-gray-500 mt-2">
+            {t('footer.tagline')}
           </p>
         </div>
       </footer>
