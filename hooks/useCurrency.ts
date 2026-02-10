@@ -6,7 +6,6 @@ interface ExchangeRates {
   [key: string]: number;
 }
 
-// Fallback rates (USD as base)
 const FALLBACK_RATES: ExchangeRates = {
   USD: 1,
   BRL: 5.0,
@@ -24,9 +23,6 @@ const FALLBACK_RATES: ExchangeRates = {
   INR: 83,
   JPY: 150,
   CNY: 7.2,
-  KRW: 1350,
-  AUD: 1.55,
-  CAD: 1.35,
 };
 
 export function useCurrency(targetCurrency: string = 'USD') {
@@ -36,7 +32,6 @@ export function useCurrency(targetCurrency: string = 'USD') {
   useEffect(() => {
     async function fetchRates() {
       try {
-        // Using a free exchange rate API
         const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
         
         if (response.ok) {
@@ -45,7 +40,6 @@ export function useCurrency(targetCurrency: string = 'USD') {
         }
       } catch (err) {
         console.error('Failed to fetch exchange rates:', err);
-        // Use fallback rates
       } finally {
         setLoading(false);
       }
@@ -54,19 +48,16 @@ export function useCurrency(targetCurrency: string = 'USD') {
     fetchRates();
   }, []);
 
-  // Convert USD amount to target currency
   const convertFromUSD = (usdAmount: number): number => {
     const rate = rates[targetCurrency] || 1;
     return usdAmount * rate;
   };
 
-  // Convert from target currency to USD
   const convertToUSD = (localAmount: number): number => {
     const rate = rates[targetCurrency] || 1;
     return localAmount / rate;
   };
 
-  // Format currency with symbol
   const formatCurrency = (amount: number, currency: string = targetCurrency): string => {
     return new Intl.NumberFormat(undefined, {
       style: 'currency',
