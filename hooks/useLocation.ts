@@ -13,12 +13,10 @@ export interface LocationInfo {
   language: string;
 }
 
-// Currency mapping by country code
 const CURRENCY_MAP: Record<string, { currency: string; symbol: string }> = {
   BR: { currency: 'BRL', symbol: 'R$' },
   US: { currency: 'USD', symbol: '$' },
   GB: { currency: 'GBP', symbol: '£' },
-  EU: { currency: 'EUR', symbol: '€' },
   DE: { currency: 'EUR', symbol: '€' },
   FR: { currency: 'EUR', symbol: '€' },
   IT: { currency: 'EUR', symbol: '€' },
@@ -36,9 +34,6 @@ const CURRENCY_MAP: Record<string, { currency: string; symbol: string }> = {
   IN: { currency: 'INR', symbol: '₹' },
   JP: { currency: 'JPY', symbol: '¥' },
   CN: { currency: 'CNY', symbol: '¥' },
-  KR: { currency: 'KRW', symbol: '₩' },
-  AU: { currency: 'AUD', symbol: '$' },
-  CA: { currency: 'CAD', symbol: '$' },
 };
 
 const DEFAULT_LOCATION: LocationInfo = {
@@ -60,7 +55,6 @@ export function useLocation() {
   useEffect(() => {
     async function detectLocation() {
       try {
-        // Try IP-based geolocation first (faster, no permission needed)
         const response = await fetch('https://ipapi.co/json/');
         
         if (response.ok) {
@@ -78,36 +72,7 @@ export function useLocation() {
             language: navigator.language || 'en-US',
           });
         } else {
-          // Fallback to browser geolocation
-          if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-              async (position) => {
-                const { latitude, longitude } = position.coords;
-                
-                // Reverse geocode (simplified - use default for now)
-                const browserLang = navigator.language;
-                const countryCode = browserLang.split('-')[1] || 'US';
-                const currencyInfo = CURRENCY_MAP[countryCode] || { currency: 'USD', symbol: '$' };
-                
-                setLocation({
-                  city: 'Your Location',
-                  country: 'Unknown',
-                  countryCode: countryCode,
-                  latitude,
-                  longitude,
-                  currency: currencyInfo.currency,
-                  currencySymbol: currencyInfo.symbol,
-                  language: browserLang,
-                });
-              },
-              () => {
-                // Permission denied or error - use default
-                setLocation(DEFAULT_LOCATION);
-              }
-            );
-          } else {
-            setLocation(DEFAULT_LOCATION);
-          }
+          setLocation(DEFAULT_LOCATION);
         }
       } catch (err) {
         console.error('Location detection error:', err);
