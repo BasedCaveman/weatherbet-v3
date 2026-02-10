@@ -1,9 +1,9 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useMarkets } from '@/hooks/useOrderBook';
+import { useMarkets } from '../hooks/useOrderBook';
 
-const AuthButton = dynamic(() => import('@/components/auth/AuthButton'), {
+const AuthButton = dynamic(() => import('../components/auth/AuthButton'), {
   ssr: false,
   loading: () => <div className="h-10 w-32 bg-gray-200 rounded animate-pulse" />
 });
