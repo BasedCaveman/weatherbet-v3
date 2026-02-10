@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 import { Market, useMarketPrices } from '../hooks/useOrderBook';
+import { useBetting } from '../hooks/useBetting';
+import { useTranslation } from '../hooks/useTranslation';
 
 interface MarketCardProps {
   market: Market;
   currencySymbol: string;
   formatCurrency: (amount: number) => string;
-  onBet: (marketId: number, isYes: boolean, amount: number) => void;
-  isConnected: boolean;
   onConnect: () => void;
 }
 
@@ -16,15 +16,15 @@ export default function MarketCard({
   market,
   currencySymbol,
   formatCurrency,
-  onBet,
-  isConnected,
   onConnect,
 }: MarketCardProps) {
+  const { t } = useTranslation();
+  const { isConnected, placeBet, status, error, reset } = useBetting();
+  const prices = useMarketPrices(market.id);
+  
   const [selectedSide, setSelectedSide] = useState<'yes' | 'no' | null>(null);
   const [betAmount, setBetAmount] = useState<number>(10);
-  const [showBetInput, setShowBetInput] = useState(false);
-  
-  const prices = useMarketPrices(market.id);
+  const [showBetPanel, setShowBetPanel] = useState(false);
 
   // Calculate time remaining
   const now = Date.now() / 1000;
@@ -32,11 +32,9 @@ export default function MarketCard({
   const daysRemaining = Math.max(0, Math.floor(timeRemaining / 86400));
   const hoursRemaining = Math.max(0, Math.floor((timeRemaining % 86400) / 3600));
 
-  // Calculate implied probabilities (mock for now since no orders yet)
-  const yesPrice = prices.bestYesAsk || 0.5;
-  const noPrice = prices.bestNoAsk || 0.5;
-  const yesProbability = Math.round(yesPrice * 100);
-  const noProbability = Math.round(noPrice * 100);
+  // Default 50/50 if no orders
+  const yesProbability = prices.bestYesAsk > 0 ? Math.round(prices.bestYesAsk * 100) : 50;
+  const noProbability = 100 - yesProbability;
 
   const handleSideSelect = (side: 'yes' | 'no') => {
     if (!isConnected) {
@@ -44,182 +42,262 @@ export default function MarketCard({
       return;
     }
     setSelectedSide(side);
-    setShowBetInput(true);
+    setShowBetPanel(true);
+    reset();
   };
 
-  const handlePlaceBet = () => {
-    if (selectedSide && betAmount > 0) {
-      onBet(market.id, selectedSide === 'yes', betAmount);
-      setShowBetInput(false);
-      setSelectedSide(null);
+  const handlePlaceBet = async () => {
+    if (!selectedSide || betAmount <= 0) return;
+    
+    const price = selectedSide === 'yes' ? yesProbability : noProbability;
+    const amountInUsdm = BigInt(Math.floor(betAmount * 1000000));
+    
+    const success = await placeBet(market.id, selectedSide === 'yes', price, amountInUsdm);
+    
+    if (success) {
+      setTimeout(() => {
+        setShowBetPanel(false);
+        setSelectedSide(null);
+        reset();
+      }, 2000);
     }
   };
 
-  const presetAmounts = [5, 10, 25, 50, 100];
+  const handleCancel = () => {
+    setShowBetPanel(false);
+    setSelectedSide(null);
+    reset();
+  };
+
+  const presetAmounts = [5, 10, 25, 50];
+
+  const getStatusMessage = (): string => {
+    switch (status) {
+      case 'connecting': return t('bet.connecting');
+      case 'approving': return t('bet.approving');
+      case 'depositing': return t('bet.approving');
+      case 'placing': return t('bet.placing');
+      case 'success': return t('bet.success');
+      case 'error': return error || t('bet.error');
+      default: return '';
+    }
+  };
+
+  const isProcessing = ['connecting', 'approving', 'depositing', 'placing'].includes(status);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+    <div className="bg-gray-900 rounded-3xl overflow-hidden border-2 border-gray-700 shadow-2xl">
       {/* Header */}
-      <div className="p-4 border-b border-gray-100">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-2xl">
-            {market.isRainMarket ? '🌧️' : '🌡️'}
-          </span>
-          <span className={`text-xs px-2 py-1 rounded-full ${
+      <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-4xl">
+              {market.isRainMarket ? '🌧️' : '🌡️'}
+            </span>
+            <div>
+              <h3 className="text-2xl font-bold text-white">{market.cityName}</h3>
+              <p className="text-emerald-100 text-sm">
+                {market.isRainMarket ? t('market.rain') : t('market.temperature')}
+              </p>
+            </div>
+          </div>
+          <span className={`px-4 py-2 rounded-full text-sm font-bold ${
             market.resolved 
-              ? 'bg-gray-100 text-gray-600' 
-              : 'bg-green-100 text-green-700'
+              ? 'bg-gray-800 text-gray-300' 
+              : 'bg-yellow-400 text-gray-900'
           }`}>
-            {market.resolved ? 'Resolved' : 'Active'}
+            {market.resolved ? t('market.resolved') : t('market.active')}
           </span>
         </div>
-        <h3 className="text-lg font-semibold text-gray-900">{market.cityName}</h3>
-        <p className="text-sm text-gray-500 mt-1">
-          {market.isRainMarket 
-            ? `Will rainfall exceed ${market.historicalAvg}mm?` 
-            : `Will temperature exceed ${market.historicalAvg / 10}°C?`}
+      </div>
+
+      {/* Question */}
+      <div className="p-5 border-b border-gray-700">
+        <p className="text-xl text-white text-center font-medium">
+          {t('market.willExceed')}{' '}
+          <span className="text-3xl font-bold text-yellow-400">
+            {market.isRainMarket 
+              ? `${market.historicalAvg}mm` 
+              : `${market.historicalAvg / 10}°C`}
+          </span>
+          ?
         </p>
       </div>
 
-      {/* Market Stats */}
-      <div className="px-4 py-3 bg-gray-50 grid grid-cols-2 gap-4 text-sm">
-        <div>
-          <span className="text-gray-500">Historical Avg</span>
-          <p className="font-medium">
+      {/* Stats */}
+      <div className="grid grid-cols-2 divide-x divide-gray-700 bg-gray-800">
+        <div className="p-4 text-center">
+          <p className="text-gray-400 text-sm">{t('market.historical')}</p>
+          <p className="text-xl font-bold text-white">
             {market.isRainMarket 
               ? `${market.historicalAvg}mm` 
               : `${market.historicalAvg / 10}°C`}
           </p>
         </div>
-        <div>
-          <span className="text-gray-500">Time Left</span>
-          <p className="font-medium">
+        <div className="p-4 text-center">
+          <p className="text-gray-400 text-sm">{t('market.timeLeft')}</p>
+          <p className="text-xl font-bold text-white">
             {daysRemaining > 0 
-              ? `${daysRemaining}d ${hoursRemaining}h` 
-              : `${hoursRemaining}h`}
+              ? `${daysRemaining} ${t('market.days')}` 
+              : `${hoursRemaining} ${t('market.hours')}`}
           </p>
         </div>
       </div>
 
       {/* YES/NO Buttons */}
-      {!market.resolved && (
-        <div className="p-4">
-          {!showBetInput ? (
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => handleSideSelect('yes')}
-                className="flex flex-col items-center p-4 rounded-lg border-2 border-green-200 bg-green-50 hover:bg-green-100 hover:border-green-400 transition-colors"
-              >
-                <span className="text-2xl mb-1">👍</span>
-                <span className="font-bold text-green-700">YES</span>
-                <span className="text-xs text-green-600 mt-1">
-                  {yesProbability > 0 ? `${yesProbability}%` : '50%'}
-                </span>
-              </button>
-              
-              <button
-                onClick={() => handleSideSelect('no')}
-                className="flex flex-col items-center p-4 rounded-lg border-2 border-red-200 bg-red-50 hover:bg-red-100 hover:border-red-400 transition-colors"
-              >
-                <span className="text-2xl mb-1">👎</span>
-                <span className="font-bold text-red-700">NO</span>
-                <span className="text-xs text-red-600 mt-1">
-                  {noProbability > 0 ? `${noProbability}%` : '50%'}
-                </span>
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Selected Side */}
-              <div className={`p-3 rounded-lg ${
-                selectedSide === 'yes' 
-                  ? 'bg-green-100 border border-green-300' 
-                  : 'bg-red-100 border border-red-300'
-              }`}>
-                <p className="font-medium text-center">
-                  Betting {selectedSide === 'yes' ? '👍 YES' : '👎 NO'}
-                </p>
-              </div>
-
-              {/* Amount Selection */}
-              <div>
-                <label className="block text-sm text-gray-600 mb-2">Amount</label>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {presetAmounts.map((amount) => (
-                    <button
-                      key={amount}
-                      onClick={() => setBetAmount(amount)}
-                      className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                        betAmount === amount
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
-                      }`}
-                    >
-                      {currencySymbol}{amount}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="number"
-                  value={betAmount}
-                  onChange={(e) => setBetAmount(Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter amount"
-                  min="1"
-                />
-              </div>
-
-              {/* Potential Payout */}
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Your bet</span>
-                  <span className="font-medium">{formatCurrency(betAmount)}</span>
-                </div>
-                <div className="flex justify-between text-sm mt-1">
-                  <span className="text-gray-600">Potential payout</span>
-                  <span className="font-medium text-green-600">
-                    {formatCurrency(betAmount * 2)}
-                  </span>
+      {!market.resolved && !showBetPanel && (
+        <div className="p-5">
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={() => handleSideSelect('yes')}
+              className="group"
+            >
+              <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl p-6 transform transition-all duration-200 group-hover:scale-105 group-active:scale-95">
+                <div className="text-center">
+                  <span className="text-5xl mb-2 block">👍</span>
+                  <span className="text-3xl font-black text-white block">{t('bet.yes')}</span>
+                  <span className="text-green-100 text-sm mt-2 block">{t('bet.yesWins')}</span>
+                  <div className="mt-3 bg-green-400/30 rounded-full px-4 py-1 inline-block">
+                    <span className="text-white font-bold text-lg">{yesProbability}%</span>
+                  </div>
                 </div>
               </div>
+            </button>
 
-              {/* Action Buttons */}
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => {
-                    setShowBetInput(false);
-                    setSelectedSide(null);
-                  }}
-                  className="py-2 px-4 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handlePlaceBet}
-                  className={`py-2 px-4 rounded-lg text-white transition-colors ${
-                    selectedSide === 'yes'
-                      ? 'bg-green-600 hover:bg-green-700'
-                      : 'bg-red-600 hover:bg-red-700'
-                  }`}
-                >
-                  Place Bet
-                </button>
+            <button
+              onClick={() => handleSideSelect('no')}
+              className="group"
+            >
+              <div className="bg-gradient-to-br from-red-500 to-rose-600 rounded-2xl p-6 transform transition-all duration-200 group-hover:scale-105 group-active:scale-95">
+                <div className="text-center">
+                  <span className="text-5xl mb-2 block">👎</span>
+                  <span className="text-3xl font-black text-white block">{t('bet.no')}</span>
+                  <span className="text-red-100 text-sm mt-2 block">{t('bet.noWins')}</span>
+                  <div className="mt-3 bg-red-400/30 rounded-full px-4 py-1 inline-block">
+                    <span className="text-white font-bold text-lg">{noProbability}%</span>
+                  </div>
+                </div>
               </div>
-            </div>
+            </button>
+          </div>
+
+          {!isConnected && (
+            <p className="text-center text-gray-400 mt-4 text-sm">
+              {t('bet.connectFirst')}
+            </p>
           )}
         </div>
       )}
 
-      {/* Resolved Market Result */}
-      {market.resolved && (
-        <div className="p-4">
-          <div className={`p-4 rounded-lg text-center ${
-            market.outcome 
-              ? 'bg-green-100 text-green-800' 
-              : 'bg-red-100 text-red-800'
+      {/* Bet Panel */}
+      {!market.resolved && showBetPanel && (
+        <div className="p-5 space-y-5">
+          <div className={`p-4 rounded-2xl text-center ${
+            selectedSide === 'yes' 
+              ? 'bg-gradient-to-r from-green-600 to-emerald-600' 
+              : 'bg-gradient-to-r from-red-600 to-rose-600'
           }`}>
-            <p className="font-bold text-lg">
-              {market.outcome ? '👍 YES Won!' : '👎 NO Won!'}
+            <span className="text-3xl mr-2">
+              {selectedSide === 'yes' ? '👍' : '👎'}
+            </span>
+            <span className="text-2xl font-bold text-white">
+              {selectedSide === 'yes' ? t('bet.yes') : t('bet.no')}
+            </span>
+          </div>
+
+          <div>
+            <label className="block text-gray-300 text-lg mb-3 font-medium">
+              {t('bet.amount')}
+            </label>
+            <div className="grid grid-cols-4 gap-2 mb-4">
+              {presetAmounts.map((amount) => (
+                <button
+                  key={amount}
+                  onClick={() => setBetAmount(amount)}
+                  disabled={isProcessing}
+                  className={`py-3 px-2 rounded-xl text-lg font-bold transition-all ${
+                    betAmount === amount
+                      ? 'bg-yellow-400 text-gray-900 scale-105'
+                      : 'bg-gray-700 text-white hover:bg-gray-600'
+                  } ${isProcessing ? 'opacity-50' : ''}`}
+                >
+                  {currencySymbol}{amount}
+                </button>
+              ))}
+            </div>
+            <input
+              type="number"
+              value={betAmount}
+              onChange={(e) => setBetAmount(Number(e.target.value))}
+              disabled={isProcessing}
+              className="w-full px-4 py-4 bg-gray-700 border-2 border-gray-600 rounded-xl text-white text-xl text-center font-bold focus:ring-2 focus:ring-yellow-400 focus:border-transparent disabled:opacity-50"
+              min="1"
+            />
+          </div>
+
+          <div className="bg-gray-800 rounded-2xl p-4 space-y-3">
+            <div className="flex justify-between items-center text-lg">
+              <span className="text-gray-400">{t('bet.yourBet')}</span>
+              <span className="text-white font-bold">{formatCurrency(betAmount)}</span>
+            </div>
+            <div className="flex justify-between items-center text-lg">
+              <span className="text-gray-400">{t('bet.potentialWin')}</span>
+              <span className="text-yellow-400 font-bold text-2xl">
+                {formatCurrency(betAmount * 2)}
+              </span>
+            </div>
+          </div>
+
+          {status !== 'idle' && (
+            <div className={`p-4 rounded-xl text-center font-medium ${
+              status === 'success' 
+                ? 'bg-green-900/50 text-green-400' 
+                : status === 'error'
+                ? 'bg-red-900/50 text-red-400'
+                : 'bg-blue-900/50 text-blue-400'
+            }`}>
+              {isProcessing && (
+                <span className="inline-block animate-spin mr-2">⏳</span>
+              )}
+              {getStatusMessage()}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={handleCancel}
+              disabled={isProcessing}
+              className="py-4 px-6 bg-gray-700 rounded-xl text-white text-lg font-bold hover:bg-gray-600 transition-colors disabled:opacity-50"
+            >
+              {t('bet.cancel')}
+            </button>
+            <button
+              onClick={handlePlaceBet}
+              disabled={isProcessing || status === 'success'}
+              className={`py-4 px-6 rounded-xl text-lg font-bold transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 ${
+                selectedSide === 'yes'
+                  ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white'
+                  : 'bg-gradient-to-r from-red-500 to-rose-600 text-white'
+              }`}
+            >
+              {isProcessing ? '...' : t('bet.placeBet')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {market.resolved && (
+        <div className="p-5">
+          <div className={`p-6 rounded-2xl text-center ${
+            market.outcome 
+              ? 'bg-gradient-to-r from-green-600 to-emerald-600' 
+              : 'bg-gradient-to-r from-red-600 to-rose-600'
+          }`}>
+            <span className="text-5xl mb-2 block">
+              {market.outcome ? '👍' : '👎'}
+            </span>
+            <p className="text-2xl font-bold text-white">
+              {market.outcome ? t('bet.yes') : t('bet.no')} {t('market.resolved')}!
             </p>
           </div>
         </div>
