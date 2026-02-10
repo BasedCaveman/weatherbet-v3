@@ -1,43 +1,38 @@
-'use client'
+'use client';
 
-import { useEffect, useState } from 'react'
-import { useReown } from '@/lib/auth/ReownProvider'
+import { useEffect, useState } from 'react';
+import { useAppKit, useAppKitAccount } from '@reown/appkit/react';
 
 interface UseAuthReturn {
-  address: string | undefined
-  isConnected: boolean
-  isConnecting: boolean
-  isAuthenticated: boolean
-  login: () => void
-  logout: () => void
+  address: string | undefined;
+  isConnected: boolean;
+  isLoading: boolean;
+  connect: () => void;
+  disconnect: () => void;
 }
 
-/**
- * Custom hook for authentication
- * Wraps Reown provider with cleaner API and no Web3 jargon
- */
 export function useAuth(): UseAuthReturn {
-  const { address, isConnected, isConnecting, open, disconnect } = useReown()
-  const [mounted, setMounted] = useState(false)
+  const { open, close } = useAppKit();
+  const { address, isConnected } = useAppKitAccount();
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    setMounted(true)
-  }, [])
+    setIsLoading(false);
+  }, []);
 
-  const login = () => {
-    open()
-  }
+  const connect = () => {
+    open();
+  };
 
-  const logout = async () => {
-    await disconnect()
-  }
+  const disconnect = () => {
+    close();
+  };
 
   return {
     address,
-    isConnected: mounted && isConnected,
-    isConnecting,
-    isAuthenticated: mounted && isConnected && !!address,
-    login,
-    logout,
-  }
+    isConnected,
+    isLoading,
+    connect,
+    disconnect,
+  };
 }
