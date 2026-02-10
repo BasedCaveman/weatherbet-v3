@@ -1,78 +1,61 @@
-'use client'
+'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { BrowserProvider, JsonRpcSigner } from 'ethers'
-import { useAppKit, useAppKitAccount, useAppKitProvider } from '@reown/appkit/react'
+import { createAppKit } from '@reown/appkit/react';
+import { EthersAdapter } from '@reown/appkit-adapter-ethers';
+import { megaethTestnet } from '@reown/appkit/networks';
+import { ReactNode, useEffect, useState } from 'react';
 
-interface ReownContextType {
-  address: string | undefined
-  isConnected: boolean
-  isConnecting: boolean
-  provider: BrowserProvider | undefined
-  signer: JsonRpcSigner | undefined
-  open: () => void
-  disconnect: () => void
+// Project ID from Reown
+const projectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID || 'ff6342f0134a0af6e9f7b972fb1c0afa';
+
+// Initialize AppKit ONCE at module level
+let initialized = false;
+
+function initializeAppKit() {
+  if (initialized || typeof window === 'undefined') return;
+  
+  try {
+    createAppKit({
+      adapters: [new EthersAdapter()],
+      networks: [megaethTestnet],
+      projectId,
+      metadata: {
+        name: 'WeatherBet',
+        description: 'Weather Prediction Markets',
+        url: 'https://weatherbet.app',
+        icons: ['https://weatherbet.app/icon.png']
+      },
+      features: {
+        analytics: false,
+      }
+    });
+    initialized = true;
+    console.log('AppKit initialized successfully');
+  } catch (error) {
+    console.error('AppKit initialization error:', error);
+  }
 }
 
-const ReownContext = createContext<ReownContextType | undefined>(undefined)
+// Initialize immediately when module loads
+if (typeof window !== 'undefined') {
+  initializeAppKit();
+}
 
 export function ReownProvider({ children }: { children: ReactNode }) {
-  const { open } = useAppKit()
-  const { address, isConnected } = useAppKitAccount()
-  const { walletProvider } = useAppKitProvider('eip155')
-  
-  const [provider, setProvider] = useState<BrowserProvider | undefined>()
-  const [signer, setSigner] = useState<JsonRpcSigner | undefined>()
-  const [isConnecting, setIsConnecting] = useState(false)
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const initProvider = async () => {
-     if (walletProvider && isConnected) {
-  try {
-    const ethersProvider = new BrowserProvider(walletProvider as any)
-          const ethersSigner = await ethersProvider.getSigner()
-          setProvider(ethersProvider)
-          setSigner(ethersSigner)
-        } catch (error) {
-          console.error('Failed to initialize provider:', error)
-        }
-      } else {
-        setProvider(undefined)
-        setSigner(undefined)
-      }
-    }
+    initializeAppKit();
+    setMounted(true);
+  }, []);
 
-    initProvider()
-  }, [walletProvider, isConnected])
-
-  const disconnect = async () => {
-    try {
-      setIsConnecting(true)
-      await open() // Reown handles disconnect through modal
-    } catch (error) {
-      console.error('Disconnect error:', error)
-    } finally {
-      setIsConnecting(false)
-    }
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-pulse">Loading...</div>
+      </div>
+    );
   }
 
-  const value: ReownContextType = {
-    address,
-    isConnected,
-    isConnecting,
-    provider,
-    signer,
-    open,
-    disconnect,
-  }
-
-  return <ReownContext.Provider value={value}>{children}</ReownContext.Provider>
-}
-
-export function useReown() {
-  const context = useContext(ReownContext)
-  if (context === undefined) {
-    throw new Error('useReown must be used within ReownProvider')
-  }
-  return context
+  return <>{children}</>;
 }
