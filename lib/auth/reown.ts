@@ -1,69 +1,34 @@
-import { createAppKit } from '@reown/appkit/react'
-import { EthersAdapter } from '@reown/appkit-adapter-ethers'
-import { megaethTestnet } from '@reown/appkit/networks'
+'use client';
 
-// Get project ID from environment
-const projectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID
+import { createAppKit } from '@reown/appkit/react';
+import { EthersAdapter } from '@reown/appkit-adapter-ethers';
+import { megaethTestnet } from '@reown/appkit/networks';
 
-if (!projectId) {
-  throw new Error('NEXT_PUBLIC_REOWN_PROJECT_ID is not set')
+const projectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID || 'ff6342f0134a0af6e9f7b972fb1c0afa';
+
+let appKit: ReturnType<typeof createAppKit> | null = null;
+
+export function getAppKit() {
+  if (appKit) return appKit;
+  
+  if (typeof window === 'undefined') return null;
+
+  appKit = createAppKit({
+    adapters: [new EthersAdapter()],
+    networks: [megaethTestnet],
+    projectId,
+    metadata: {
+      name: 'WeatherBet',
+      description: 'Weather Prediction Markets',
+      url: 'https://weatherbet.app',
+      icons: ['https://weatherbet.app/icon.png']
+    },
+    features: {
+      analytics: false,
+    }
+  });
+
+  return appKit;
 }
 
-// Define MegaETH testnet
-const megaETH = {
-  id: 6343,
-  name: 'MegaETH Testnet v2',
-  network: 'megaeth-testnet',
-  nativeCurrency: {
-    decimals: 18,
-    name: 'Ether',
-    symbol: 'ETH',
-  },
-  rpcUrls: {
-    default: {
-      http: ['https://rpc-testnet.megaeth.com'],
-    },
-    public: {
-      http: ['https://rpc-testnet.megaeth.com'],
-    },
-  },
-  blockExplorers: {
-    default: {
-      name: 'MegaETH Explorer',
-      url: 'https://explorer-testnet.megaeth.com',
-    },
-  },
-  testnet: true,
-}
-
-// Metadata
-const metadata = {
-  name: 'WeatherBet',
-  description: 'Bet on weather in capital cities worldwide',
-  url: 'https://weatherbet.app', // Update with actual domain
-  icons: ['https://weatherbet.app/icon.png'] // Update with actual icon
-}
-
-// Create modal with ONLY social login options
-export const appKit = createAppKit({
-  adapters: [new EthersAdapter()],
-  networks: [megaETH],
-  metadata,
-  projectId,
-  features: {
-    analytics: true,
-    email: false, // Disable email
-    socials: ['google', 'apple'], // ONLY Google and Apple
-    emailShowWallets: false, // Hide wallet options from email flow
-  },
-  themeMode: 'light',
-  themeVariables: {
-    '--w3m-accent': '#2563eb', // Primary blue
-    '--w3m-border-radius-master': '8px',
-  },
-  // Hide all wallet connect options
-  featuredWalletIds: [],
-  includeWalletIds: [],
-  excludeWalletIds: ['ALL'], // Exclude all wallets
-  enableWalletConnect: false, // Disable WalletConnect
-})
+export { projectId };
