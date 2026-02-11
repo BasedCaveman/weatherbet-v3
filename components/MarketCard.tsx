@@ -29,6 +29,7 @@ export default function MarketCard({
     error, 
     reset,
     refreshPositions,
+    refreshBalances,
   } = useBetting();
   
   const prices = useMarketPrices(market.id);
@@ -58,8 +59,9 @@ export default function MarketCard({
   const yesProbability = prices.bestYesAsk > 0 ? Math.round(prices.bestYesAsk * 100) : 50;
   const noProbability = 100 - yesProbability;
 
-  // Check if user needs funds
-  const needsFunds = parseFloat(balances.wallet) < 10 && parseFloat(balances.deposited) < 10;
+  // Show total available funds (wallet + deposited)
+  const totalBalance = parseFloat(balances.total);
+  const needsFunds = totalBalance < 5;
 
   const handleSideSelect = (side: 'yes' | 'no') => {
     if (!isConnected) {
@@ -86,7 +88,11 @@ export default function MarketCard({
   };
 
   const handleGetTokens = async () => {
-    await getTestTokens(100); // Get 100 USDm
+    const success = await getTestTokens();
+    if (success) {
+      // Auto-reset success message after 3 seconds
+      setTimeout(() => reset(), 3000);
+    }
   };
 
   const handleCancel = () => {
@@ -186,17 +192,47 @@ export default function MarketCard({
           <div className="flex justify-between items-center">
             <span className="text-gray-400 text-sm">💰 Your Balance</span>
             <span className="text-white font-bold">
-              ${parseFloat(balances.deposited).toFixed(2)} USDm
+              ${totalBalance.toFixed(2)} USDm
             </span>
           </div>
+          {parseFloat(balances.wallet) > 0 && parseFloat(balances.deposited) > 0 && (
+            <div className="flex justify-between items-center mt-1">
+              <span className="text-gray-500 text-xs">
+                (${parseFloat(balances.wallet).toFixed(2)} wallet + ${parseFloat(balances.deposited).toFixed(2)} deposited)
+              </span>
+            </div>
+          )}
           {needsFunds && (
             <button
               onClick={handleGetTokens}
               disabled={isProcessing}
-              className="w-full mt-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-medium transition-colors disabled:opacity-50"
+              className="w-full mt-3 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-lg transition-colors disabled:opacity-50"
             >
-              {isProcessing ? '⏳ Getting tokens...' : '🎁 Get Free Test Tokens'}
+              {isProcessing ? '⏳ Getting tokens...' : 
+               status === 'success' ? '✅ 100 USDm received!' :
+               '🎁 Get Free Test Tokens (100 USDm)'}
             </button>
+          )}
+          {/* Always show faucet option if balance is low, even after success */}
+          {!needsFunds && balances.canClaimFaucet && totalBalance < 50 && (
+            <button
+              onClick={handleGetTokens}
+              disabled={isProcessing}
+              className="w-full mt-2 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-xl font-medium text-sm transition-colors disabled:opacity-50"
+            >
+              {isProcessing ? '⏳ Getting tokens...' : '+ Get more test tokens'}
+            </button>
+          )}
+          {/* Show faucet error/success */}
+          {!showBetPanel && status === 'error' && error && (
+            <div className="mt-2 p-2 bg-red-900/50 rounded-lg text-red-400 text-sm text-center">
+              {error}
+            </div>
+          )}
+          {!showBetPanel && status === 'success' && (
+            <div className="mt-2 p-2 bg-green-900/50 rounded-lg text-green-400 text-sm text-center">
+              ✅ Tokens received! You can now place bets.
+            </div>
           )}
         </div>
       )}
@@ -262,6 +298,12 @@ export default function MarketCard({
             </span>
           </div>
 
+          {/* Show balance in bet panel too */}
+          <div className="flex justify-between items-center bg-gray-800 rounded-xl p-3">
+            <span className="text-gray-400 text-sm">Available</span>
+            <span className="text-white font-bold">${totalBalance.toFixed(2)} USDm</span>
+          </div>
+
           <div>
             <label className="block text-gray-300 text-lg mb-3 font-medium">
               {t('bet.amount')}
@@ -305,6 +347,20 @@ export default function MarketCard({
             </div>
           </div>
 
+          {/* Not enough funds warning */}
+          {totalBalance < betAmount && (
+            <div className="p-3 bg-yellow-900/50 rounded-xl text-yellow-400 text-center">
+              <p className="font-medium">Not enough funds (${totalBalance.toFixed(2)} available)</p>
+              <button
+                onClick={handleGetTokens}
+                disabled={isProcessing}
+                className="mt-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50"
+              >
+                🎁 Get 100 USDm free
+              </button>
+            </div>
+          )}
+
           {/* Status Messages */}
           {status !== 'idle' && (
             <div className={`p-4 rounded-xl text-center font-medium ${
@@ -314,9 +370,9 @@ export default function MarketCard({
                 ? 'bg-red-900/50 text-red-400'
                 : 'bg-blue-900/50 text-blue-400'
             }`}>
-              {status === 'preparing' && '⏳ Preparing transaction...'}
-              {status === 'confirming' && '✍️ Please confirm in your wallet...'}
-              {status === 'success' && '✅ Bet placed successfully!'}
+              {status === 'preparing' && '⏳ Preparing...'}
+              {status === 'confirming' && '✍️ Confirming...'}
+              {status === 'success' && '✅ Bet placed!'}
               {status === 'error' && `❌ ${error}`}
             </div>
           )}
@@ -331,7 +387,7 @@ export default function MarketCard({
             </button>
             <button
               onClick={handlePlaceBet}
-              disabled={isProcessing || status === 'success'}
+              disabled={isProcessing || status === 'success' || totalBalance < betAmount}
               className={`py-4 px-6 rounded-xl text-lg font-bold transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:transform-none ${
                 selectedSide === 'yes'
                   ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white'
@@ -364,3 +420,4 @@ export default function MarketCard({
     </div>
   );
 }
+
