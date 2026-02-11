@@ -29,7 +29,7 @@ const ORDER_BOOK_ABI = [
   'function getPosition(uint256 marketId, address user) view returns (uint256 yesShares, uint256 noShares)',
 ];
 
-export type BetStatus = 'idle' | 'preparing' | 'confirming' | 'success' | 'error';
+export type BetStatus = 'idle' | 'preparing' | 'approving' | 'depositing' | 'confirming' | 'success' | 'error';
 
 export interface UserBalance {
   wallet: string;
@@ -76,13 +76,13 @@ export function useBetting() {
         usdm.canClaimFaucet(address).catch(() => true),
       ]);
       
-      const walletStr = ethers.formatUnits(walletBal, 6);
-      const depositedStr = ethers.formatUnits(depositedBal, 6);
+      // FIXED: Use BigInt math then format, don't add formatted strings
+      const totalBal = walletBal + depositedBal;
       
       setBalances({
-        wallet: walletStr,
-        deposited: depositedStr,
-        total: (parseFloat(walletStr) + parseFloat(depositedStr)).toFixed(2),
+        wallet: ethers.formatUnits(walletBal, 6),
+        deposited: ethers.formatUnits(depositedBal, 6),
+        total: ethers.formatUnits(totalBal, 6),
         eth: ethers.formatEther(ethBal),
         canClaimFaucet: canClaim,
       });
@@ -155,6 +155,8 @@ export function useBetting() {
         errorMsg = 'Please wait before claiming again';
       } else if (err.message?.includes('user rejected')) {
         errorMsg = 'Cancelled';
+      } else if (err.message?.includes('Magic RPC') || err.message?.includes('Failed to fetch')) {
+        errorMsg = 'Network error. Google accounts may need ETH for gas. Try with a wallet app instead.';
       } else if (err.reason) {
         errorMsg = err.reason;
       }
@@ -189,39 +191,43 @@ export function useBetting() {
       const shares = (amountWei * BigInt(1000000)) / price;
       const cost = (shares * price) / BigInt(1000000);
       
-      // Check balances
+      // Check balances using READ provider (no wallet popup)
+      const readProvider = getReadProvider();
+      const usdmRead = new ethers.Contract(CONTRACTS.USDM, USDM_ABI, readProvider);
+      const orderBookRead = new ethers.Contract(CONTRACTS.ORDER_BOOK, ORDER_BOOK_ABI, readProvider);
+      
       const [walletBalance, depositedBalance, allowance] = await Promise.all([
-        usdm.balanceOf(address),
-        orderBook.balances(address),
-        usdm.allowance(address, CONTRACTS.ORDER_BOOK),
+        usdmRead.balanceOf(address),
+        orderBookRead.balances(address),
+        usdmRead.allowance(address, CONTRACTS.ORDER_BOOK),
       ]);
       
       const totalAvailable = walletBalance + depositedBalance;
       
       if (totalAvailable < cost) {
-        setError(`Not enough funds. You have $${ethers.formatUnits(totalAvailable, 6)} but need $${ethers.formatUnits(cost, 6)}. Use the faucet to get test tokens.`);
+        setError(`Not enough funds. You have $${parseFloat(ethers.formatUnits(totalAvailable, 6)).toFixed(2)} but need $${parseFloat(ethers.formatUnits(cost, 6)).toFixed(2)}.`);
         setStatus('error');
         return false;
       }
       
       // Step 1: Approve if needed (one-time large approval)
+      // Use MaxUint256 so user only approves ONCE ever
       if (allowance < cost) {
-        setStatus('confirming');
-        const largeApproval = ethers.parseUnits('1000000', 6);
-        const approveTx = await usdm.approve(CONTRACTS.ORDER_BOOK, largeApproval);
+        setStatus('approving');
+        const maxApproval = ethers.MaxUint256;
+        const approveTx = await usdm.approve(CONTRACTS.ORDER_BOOK, maxApproval);
         await approveTx.wait();
       }
       
       // Step 2: Deposit from wallet to OrderBook if needed
       if (depositedBalance < cost) {
         const depositNeeded = cost - depositedBalance;
-        // Make sure we have enough in wallet
         if (walletBalance < depositNeeded) {
-          setError('Not enough funds in wallet to deposit');
+          setError('Not enough funds in wallet');
           setStatus('error');
           return false;
         }
-        setStatus('confirming');
+        setStatus('depositing');
         const depositTx = await orderBook.deposit(depositNeeded);
         await depositTx.wait();
       }
@@ -247,6 +253,8 @@ export function useBetting() {
           errorMsg = 'Not enough ETH for gas. Get test ETH from the MegaETH faucet.';
         } else if (err.message.includes('user rejected')) {
           errorMsg = 'Transaction cancelled';
+        } else if (err.message.includes('Magic RPC') || err.message.includes('Failed to fetch')) {
+          errorMsg = 'Network error. Google accounts may not support this chain yet. Try connecting a wallet app.';
         } else if (err.message.includes('missing revert data')) {
           errorMsg = 'Transaction failed. Make sure you have enough funds and try again.';
         } else {
@@ -258,7 +266,7 @@ export function useBetting() {
       setStatus('error');
       return false;
     }
-  }, [walletProvider, address, refreshBalances, refreshPositions]);
+  }, [walletProvider, address, refreshBalances, refreshPositions, getReadProvider]);
 
   const reset = useCallback(() => {
     setStatus('idle');
