@@ -371,7 +371,9 @@ export default function MarketCard({
                 : 'bg-blue-900/50 text-blue-400'
             }`}>
               {status === 'preparing' && '⏳ Preparing...'}
-              {status === 'confirming' && '✍️ Confirming...'}
+              {status === 'approving' && '✍️ Step 1/3: Approve token (one-time only)...'}
+              {status === 'depositing' && '✍️ Step 2/3: Depositing funds...'}
+              {status === 'confirming' && '✍️ Final step: Placing your bet...'}
               {status === 'success' && '✅ Bet placed!'}
               {status === 'error' && `❌ ${error}`}
             </div>
@@ -420,4 +422,3 @@ export default function MarketCard({
     </div>
   );
 }
-
