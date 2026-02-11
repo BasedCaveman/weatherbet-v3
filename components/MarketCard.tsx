@@ -55,9 +55,19 @@ export default function MarketCard({
   const daysRemaining = Math.max(0, Math.floor(timeRemaining / 86400));
   const hoursRemaining = Math.max(0, Math.floor((timeRemaining % 86400) / 3600));
 
-  // Default 50/50 if no orders
-  const yesProbability = prices.bestYesAsk > 0 ? Math.round(prices.bestYesAsk * 100) : 50;
+  // Calculate odds from actual betting volume (not empty order book)
+  const totalYes = Number(market.totalYesShares);
+  const totalNo = Number(market.totalNoShares);
+  const totalVolume = totalYes + totalNo;
+  // More YES bets → YES costs more (lower payout) → higher YES probability displayed
+  const yesProbability = totalVolume > 0 
+    ? Math.round((totalYes / totalVolume) * 100)
+    : 50;
   const noProbability = 100 - yesProbability;
+
+  // Calculate payout multiplier based on odds
+  const yesMultiplier = yesProbability > 0 ? (100 / yesProbability) : 2;
+  const noMultiplier = noProbability > 0 ? (100 / noProbability) : 2;
 
   // Show total available funds (wallet + deposited)
   const totalBalance = parseFloat(balances.total);
@@ -90,7 +100,6 @@ export default function MarketCard({
   const handleGetTokens = async () => {
     const success = await getTestTokens();
     if (success) {
-      // Auto-reset success message after 3 seconds
       setTimeout(() => reset(), 3000);
     }
   };
@@ -102,7 +111,11 @@ export default function MarketCard({
   };
 
   const presetAmounts = [5, 10, 25, 50];
-  const isProcessing = status === 'preparing' || status === 'confirming';
+  const isProcessing = status === 'preparing' || status === 'approving' || status === 'depositing' || status === 'confirming';
+
+  // Calculate potential win based on selected side's multiplier
+  const selectedMultiplier = selectedSide === 'yes' ? yesMultiplier : noMultiplier;
+  const potentialWin = betAmount * selectedMultiplier;
 
   return (
     <div className="bg-gray-900 rounded-3xl overflow-hidden border-2 border-gray-700 shadow-2xl">
@@ -167,21 +180,29 @@ export default function MarketCard({
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 divide-x divide-gray-700 bg-gray-800">
+      <div className="grid grid-cols-3 divide-x divide-gray-700 bg-gray-800">
         <div className="p-4 text-center">
-          <p className="text-gray-400 text-sm">{t('market.historical')}</p>
-          <p className="text-xl font-bold text-white">
+          <p className="text-gray-400 text-xs">{t('market.historical')}</p>
+          <p className="text-lg font-bold text-white">
             {market.isRainMarket 
               ? `${market.historicalAvg}mm` 
               : `${market.historicalAvg / 10}°C`}
           </p>
         </div>
         <div className="p-4 text-center">
-          <p className="text-gray-400 text-sm">{t('market.timeLeft')}</p>
-          <p className="text-xl font-bold text-white">
+          <p className="text-gray-400 text-xs">{t('market.timeLeft')}</p>
+          <p className="text-lg font-bold text-white">
             {daysRemaining > 0 
               ? `${daysRemaining} ${t('market.days')}` 
               : `${hoursRemaining} ${t('market.hours')}`}
+          </p>
+        </div>
+        <div className="p-4 text-center">
+          <p className="text-gray-400 text-xs">Volume</p>
+          <p className="text-lg font-bold text-white">
+            {totalVolume > 0 
+              ? `$${(totalVolume / 1e6).toFixed(0)}` 
+              : '$0'}
           </p>
         </div>
       </div>
@@ -192,16 +213,9 @@ export default function MarketCard({
           <div className="flex justify-between items-center">
             <span className="text-gray-400 text-sm">💰 Your Balance</span>
             <span className="text-white font-bold">
-              ${totalBalance.toFixed(2)} USDm
+              ${parseFloat(balances.total).toFixed(2)} USDm
             </span>
           </div>
-          {parseFloat(balances.wallet) > 0 && parseFloat(balances.deposited) > 0 && (
-            <div className="flex justify-between items-center mt-1">
-              <span className="text-gray-500 text-xs">
-                (${parseFloat(balances.wallet).toFixed(2)} wallet + ${parseFloat(balances.deposited).toFixed(2)} deposited)
-              </span>
-            </div>
-          )}
           {needsFunds && (
             <button
               onClick={handleGetTokens}
@@ -213,7 +227,6 @@ export default function MarketCard({
                '🎁 Get Free Test Tokens (100 USDm)'}
             </button>
           )}
-          {/* Always show faucet option if balance is low, even after success */}
           {!needsFunds && balances.canClaimFaucet && totalBalance < 50 && (
             <button
               onClick={handleGetTokens}
@@ -223,7 +236,6 @@ export default function MarketCard({
               {isProcessing ? '⏳ Getting tokens...' : '+ Get more test tokens'}
             </button>
           )}
-          {/* Show faucet error/success */}
           {!showBetPanel && status === 'error' && error && (
             <div className="mt-2 p-2 bg-red-900/50 rounded-lg text-red-400 text-sm text-center">
               {error}
@@ -253,6 +265,11 @@ export default function MarketCard({
                   <div className="mt-3 bg-green-400/30 rounded-full px-4 py-1 inline-block">
                     <span className="text-white font-bold text-lg">{yesProbability}%</span>
                   </div>
+                  {totalVolume > 0 && (
+                    <div className="mt-1">
+                      <span className="text-green-200 text-xs">pays {yesMultiplier.toFixed(2)}x</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </button>
@@ -269,6 +286,11 @@ export default function MarketCard({
                   <div className="mt-3 bg-red-400/30 rounded-full px-4 py-1 inline-block">
                     <span className="text-white font-bold text-lg">{noProbability}%</span>
                   </div>
+                  {totalVolume > 0 && (
+                    <div className="mt-1">
+                      <span className="text-red-200 text-xs">pays {noMultiplier.toFixed(2)}x</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </button>
@@ -296,12 +318,15 @@ export default function MarketCard({
             <span className="text-2xl font-bold text-white">
               {selectedSide === 'yes' ? t('bet.yes') : t('bet.no')}
             </span>
+            <span className="text-white/70 text-sm ml-2">
+              ({selectedSide === 'yes' ? yesProbability : noProbability}% odds • {selectedMultiplier.toFixed(2)}x payout)
+            </span>
           </div>
 
-          {/* Show balance in bet panel too */}
+          {/* Show balance in bet panel */}
           <div className="flex justify-between items-center bg-gray-800 rounded-xl p-3">
             <span className="text-gray-400 text-sm">Available</span>
-            <span className="text-white font-bold">${totalBalance.toFixed(2)} USDm</span>
+            <span className="text-white font-bold">${parseFloat(balances.total).toFixed(2)} USDm</span>
           </div>
 
           <div>
@@ -342,7 +367,7 @@ export default function MarketCard({
             <div className="flex justify-between items-center text-lg">
               <span className="text-gray-400">{t('bet.potentialWin')}</span>
               <span className="text-yellow-400 font-bold text-2xl">
-                ${(betAmount * 2).toFixed(2)}
+                ${potentialWin.toFixed(2)}
               </span>
             </div>
           </div>
