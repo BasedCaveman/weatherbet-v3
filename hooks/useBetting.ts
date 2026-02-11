@@ -16,7 +16,9 @@ const USDM_ABI = [
   'function approve(address spender, uint256 amount) returns (bool)',
   'function allowance(address owner, address spender) view returns (uint256)',
   'function balanceOf(address account) view returns (uint256)',
-  'function mint(address to, uint256 amount)',
+  'function faucet()',
+  'function faucetAmount() view returns (uint256)',
+  'function canClaimFaucet(address user) view returns (bool)',
 ];
 
 const ORDER_BOOK_ABI = [
@@ -32,7 +34,9 @@ export type BetStatus = 'idle' | 'preparing' | 'confirming' | 'success' | 'error
 export interface UserBalance {
   wallet: string;
   deposited: string;
+  total: string;
   eth: string;
+  canClaimFaucet: boolean;
 }
 
 export interface Position {
@@ -47,7 +51,9 @@ export function useBetting() {
   
   const [status, setStatus] = useState<BetStatus>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [balances, setBalances] = useState<UserBalance>({ wallet: '0', deposited: '0', eth: '0' });
+  const [balances, setBalances] = useState<UserBalance>({ 
+    wallet: '0', deposited: '0', total: '0', eth: '0', canClaimFaucet: true 
+  });
   const [positions, setPositions] = useState<Position[]>([]);
   const [isReady, setIsReady] = useState(false);
 
@@ -63,16 +69,22 @@ export function useBetting() {
       const usdm = new ethers.Contract(CONTRACTS.USDM, USDM_ABI, provider);
       const orderBook = new ethers.Contract(CONTRACTS.ORDER_BOOK, ORDER_BOOK_ABI, provider);
       
-      const [walletBal, depositedBal, ethBal] = await Promise.all([
+      const [walletBal, depositedBal, ethBal, canClaim] = await Promise.all([
         usdm.balanceOf(address),
         orderBook.balances(address),
         provider.getBalance(address),
+        usdm.canClaimFaucet(address).catch(() => true),
       ]);
       
+      const walletStr = ethers.formatUnits(walletBal, 6);
+      const depositedStr = ethers.formatUnits(depositedBal, 6);
+      
       setBalances({
-        wallet: ethers.formatUnits(walletBal, 6),
-        deposited: ethers.formatUnits(depositedBal, 6),
+        wallet: walletStr,
+        deposited: depositedStr,
+        total: (parseFloat(walletStr) + parseFloat(depositedStr)).toFixed(2),
         eth: ethers.formatEther(ethBal),
+        canClaimFaucet: canClaim,
       });
       
       setIsReady(true);
@@ -113,9 +125,10 @@ export function useBetting() {
     }
   }, [isConnected, address, refreshBalances, refreshPositions]);
 
-  const getTestTokens = useCallback(async (amount: number = 1000): Promise<boolean> => {
+  // Uses faucet() — works for ALL accounts (Google smart accounts + MetaMask)
+  const getTestTokens = useCallback(async (): Promise<boolean> => {
     if (!walletProvider || !address) {
-      setError('Please connect your wallet first');
+      setError('Please sign in first');
       return false;
     }
     
@@ -127,18 +140,26 @@ export function useBetting() {
       const signer = await provider.getSigner();
       const usdm = new ethers.Contract(CONTRACTS.USDM, USDM_ABI, signer);
       
-      const amountWei = ethers.parseUnits(amount.toString(), 6);
-      
       setStatus('confirming');
-      const tx = await usdm.mint(address, amountWei);
+      const tx = await usdm.faucet();
       await tx.wait();
       
       await refreshBalances();
       setStatus('success');
       return true;
     } catch (err: any) {
-      console.error('Error getting test tokens:', err);
-      setError(err.reason || err.message || 'Failed to get test tokens');
+      console.error('Error claiming faucet:', err);
+      
+      let errorMsg = 'Failed to get test tokens';
+      if (err.message?.includes('Cooldown')) {
+        errorMsg = 'Please wait before claiming again';
+      } else if (err.message?.includes('user rejected')) {
+        errorMsg = 'Cancelled';
+      } else if (err.reason) {
+        errorMsg = err.reason;
+      }
+      
+      setError(errorMsg);
       setStatus('error');
       return false;
     }
@@ -150,7 +171,7 @@ export function useBetting() {
     amountUsd: number
   ): Promise<boolean> => {
     if (!walletProvider || !address) {
-      setError('Please connect your wallet first');
+      setError('Please sign in first');
       return false;
     }
     
@@ -164,37 +185,48 @@ export function useBetting() {
       const orderBook = new ethers.Contract(CONTRACTS.ORDER_BOOK, ORDER_BOOK_ABI, signer);
       
       const amountWei = ethers.parseUnits(amountUsd.toString(), 6);
-      const price = BigInt(500000);
+      const price = BigInt(500000); // 0.50 USDm
       const shares = (amountWei * BigInt(1000000)) / price;
       const cost = (shares * price) / BigInt(1000000);
       
+      // Check balances
       const [walletBalance, depositedBalance, allowance] = await Promise.all([
         usdm.balanceOf(address),
         orderBook.balances(address),
         usdm.allowance(address, CONTRACTS.ORDER_BOOK),
       ]);
       
-      if (walletBalance + depositedBalance < cost) {
-        const needed = cost - walletBalance - depositedBalance + ethers.parseUnits('10', 6);
-        setStatus('confirming');
-        const mintTx = await usdm.mint(address, needed);
-        await mintTx.wait();
+      const totalAvailable = walletBalance + depositedBalance;
+      
+      if (totalAvailable < cost) {
+        setError(`Not enough funds. You have $${ethers.formatUnits(totalAvailable, 6)} but need $${ethers.formatUnits(cost, 6)}. Use the faucet to get test tokens.`);
+        setStatus('error');
+        return false;
       }
       
-      const largeApproval = ethers.parseUnits('1000000', 6);
+      // Step 1: Approve if needed (one-time large approval)
       if (allowance < cost) {
         setStatus('confirming');
+        const largeApproval = ethers.parseUnits('1000000', 6);
         const approveTx = await usdm.approve(CONTRACTS.ORDER_BOOK, largeApproval);
         await approveTx.wait();
       }
       
+      // Step 2: Deposit from wallet to OrderBook if needed
       if (depositedBalance < cost) {
         const depositNeeded = cost - depositedBalance;
+        // Make sure we have enough in wallet
+        if (walletBalance < depositNeeded) {
+          setError('Not enough funds in wallet to deposit');
+          setStatus('error');
+          return false;
+        }
         setStatus('confirming');
         const depositTx = await orderBook.deposit(depositNeeded);
         await depositTx.wait();
       }
       
+      // Step 3: Place the order
       setStatus('confirming');
       const orderTx = await orderBook.placeOrder(marketId, isYes, price, shares);
       await orderTx.wait();
@@ -212,11 +244,13 @@ export function useBetting() {
         errorMsg = err.reason;
       } else if (err.message) {
         if (err.message.includes('insufficient funds')) {
-          errorMsg = 'Insufficient funds. Get test tokens first.';
+          errorMsg = 'Not enough ETH for gas. Get test ETH from the MegaETH faucet.';
         } else if (err.message.includes('user rejected')) {
           errorMsg = 'Transaction cancelled';
+        } else if (err.message.includes('missing revert data')) {
+          errorMsg = 'Transaction failed. Make sure you have enough funds and try again.';
         } else {
-          errorMsg = err.message.slice(0, 100);
+          errorMsg = err.message.slice(0, 120);
         }
       }
       
