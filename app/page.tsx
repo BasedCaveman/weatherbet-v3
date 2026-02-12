@@ -14,7 +14,6 @@ function detectCurrencyCode(): string {
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
     const region = tz.split('/')[0];
-    const city = tz.split('/')[1] || '';
 
     // Brazil
     if (tz.includes('Sao_Paulo') || tz.includes('Fortaleza') || tz.includes('Recife') ||
@@ -47,18 +46,18 @@ function detectCurrencyCode(): string {
     if (tz.includes('Shanghai') || tz.includes('Hong_Kong')) return 'CNY';
     // UK
     if (tz.includes('London')) return 'GBP';
-    // Europe
+    // Germany
+    if (tz.includes('Berlin') || tz.includes('Munich') || tz.includes('Hamburg') ||
+        tz.includes('Frankfurt') || tz.includes('Cologne') || tz.includes('Stuttgart')) return 'EUR';
+    // Europe (general)
     if (region === 'Europe') return 'EUR';
     // Australia
     if (tz.includes('Sydney') || tz.includes('Melbourne') || region === 'Australia') return 'AUD';
-    // US/Canada default
-    if (region === 'America' && !tz.includes('Sao_Paulo') && !tz.includes('Mexico') &&
-        !tz.includes('Buenos_Aires') && !tz.includes('Bogota') && !tz.includes('Santiago') &&
-        !tz.includes('Lima')) {
-      // Check for Canadian cities
-      if (tz.includes('Toronto') || tz.includes('Vancouver') || tz.includes('Edmonton')) return 'CAD';
-      return 'USD';
-    }
+    // Canada
+    if (tz.includes('Toronto') || tz.includes('Vancouver') || tz.includes('Edmonton') ||
+        tz.includes('Winnipeg') || tz.includes('Halifax')) return 'CAD';
+    // US default for remaining America/ timezones
+    if (region === 'America') return 'USD';
 
     return 'USD';
   } catch {
@@ -66,7 +65,6 @@ function detectCurrencyCode(): string {
   }
 }
 
-// Detect location name from timezone
 function detectLocationName(): string {
   if (typeof window === 'undefined') return '';
   try {
@@ -88,15 +86,12 @@ export default function Home() {
   }, []);
 
   const { markets, loading, error, refetchMarkets } = useMarkets();
-  const { convertFromUSD, formatCurrency, targetCurrency } = useCurrency(currencyCode);
+  const { convertFromUSD, formatCurrency } = useCurrency(currencyCode);
   const { t } = useTranslation();
   const { open } = useAppKit();
 
-  const handleConnect = () => {
-    open();
-  };
+  const handleConnect = () => { open(); };
 
-  // Format USDm amount in local currency
   const formatLocal = (usdmAmount: number): string => {
     const localAmount = convertFromUSD(usdmAmount);
     return formatCurrency(localAmount);
@@ -107,10 +102,9 @@ export default function Home() {
       <Header locationName={locationName} currencyCode={currencyCode} />
 
       <main className="max-w-lg mx-auto px-4 py-6 space-y-6">
-        {/* Tagline */}
         {!loading && markets.length > 0 && (
           <div className="text-center">
-            <p className="text-gray-400 text-sm">
+            <p className="text-gray-400 text-sm leading-snug">
               {t('hero.subtitle')}
               {currencyCode !== 'USD' && (
                 <span className="text-gray-500 ml-1">• {t('hero.pricesIn')} {currencyCode}</span>
@@ -119,7 +113,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Loading */}
         {loading && (
           <div className="text-center py-20">
             <div className="text-6xl mb-4 animate-bounce">🌤️</div>
@@ -127,20 +120,16 @@ export default function Home() {
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div className="bg-red-900/50 border border-red-700 rounded-2xl p-6 text-center">
             <p className="text-red-400 font-medium">{error}</p>
-            <button
-              onClick={refetchMarkets}
-              className="mt-4 px-6 py-2 bg-red-700 hover:bg-red-600 text-white rounded-xl transition-colors"
-            >
+            <button onClick={refetchMarkets}
+              className="mt-4 px-6 py-2 bg-red-700 hover:bg-red-600 text-white rounded-xl transition-colors">
               {t('error.tryAgain')}
             </button>
           </div>
         )}
 
-        {/* Empty */}
         {!loading && !error && markets.length === 0 && (
           <div className="text-center py-20">
             <div className="text-6xl mb-4">🏜️</div>
@@ -149,7 +138,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Markets */}
         {!loading && markets.map((market) => (
           <MarketCard
             key={market.id}
@@ -159,15 +147,10 @@ export default function Home() {
           />
         ))}
 
-        {/* Footer */}
         {!loading && markets.length > 0 && (
           <footer className="text-center py-8">
-            <p className="text-xs text-gray-500">
-              {t('footer.tagline')}
-            </p>
-            <p className="text-xs text-gray-600 mt-1">
-              Built on MegaETH ⚡
-            </p>
+            <p className="text-xs text-gray-500">{t('footer.tagline')}</p>
+            <p className="text-xs text-gray-600 mt-1">Built on MegaETH ⚡</p>
           </footer>
         )}
       </main>
