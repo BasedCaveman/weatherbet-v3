@@ -11,98 +11,52 @@ interface MarketCardProps {
   onConnect: () => void;
 }
 
-export default function MarketCard({
-  market,
-  formatLocal,
-  onConnect,
-}: MarketCardProps) {
+export default function MarketCard({ market, formatLocal, onConnect }: MarketCardProps) {
   const { t } = useTranslation();
   const {
-    isConnected,
-    balances,
-    userBets,
-    placeBet,
-    getTestTokens,
-    status,
-    error,
-    reset,
-    refreshUserBets,
+    isConnected, balances, userBets, placeBet, getTestTokens, status, error, reset, refreshUserBets,
   } = useBetting();
-
   const { odds, refetchOdds } = useMarketOdds(market.id);
 
   const [selectedSide, setSelectedSide] = useState<'yes' | 'no' | null>(null);
   const [betAmount, setBetAmount] = useState<number>(5);
   const [showBetPanel, setShowBetPanel] = useState(false);
 
-  // Refresh user bets when connected
   useEffect(() => {
-    if (isConnected) {
-      refreshUserBets([market.id]);
-    }
+    if (isConnected) refreshUserBets([market.id]);
   }, [isConnected, market.id, refreshUserBets]);
 
-  // User's bet in this market
   const userBet = userBets.find(b => b.marketId === market.id);
   const hasBet = userBet && (parseFloat(userBet.yesAmount) > 0 || parseFloat(userBet.noAmount) > 0);
 
-  // Time remaining
   const now = Date.now() / 1000;
   const timeRemaining = market.endTime - now;
   const daysRemaining = Math.max(0, Math.floor(timeRemaining / 86400));
   const hoursRemaining = Math.max(0, Math.floor((timeRemaining % 86400) / 3600));
 
-  // Pool volume in USDm
   const yesPoolUsd = Number(market.yesPool) / 1e6;
   const noPoolUsd = Number(market.noPool) / 1e6;
   const totalVolume = yesPoolUsd + noPoolUsd;
 
-  // Smart odds display — never show 0%/0x for empty sides
+  // Smart projected odds
   const displayOdds = useMemo(() => {
-    const HYPOTHETICAL_BET = 5;
-
-    if (totalVolume === 0) {
-      return { yesPct: 50, noPct: 50, yesMultiplier: 2.0, noMultiplier: 2.0, isProjected: false };
-    }
-
+    const H = 5;
+    if (totalVolume === 0) return { yesPct: 50, noPct: 50, yesMultiplier: 2, noMultiplier: 2, isProjected: false };
     if (noPoolUsd === 0) {
-      const projectedTotal = totalVolume + HYPOTHETICAL_BET;
-      const yesPct = Math.min(95, Math.round((yesPoolUsd / projectedTotal) * 100));
-      return {
-        yesPct,
-        noPct: 100 - yesPct,
-        yesMultiplier: projectedTotal / yesPoolUsd,
-        noMultiplier: projectedTotal / HYPOTHETICAL_BET,
-        isProjected: true,
-      };
+      const t = totalVolume + H;
+      return { yesPct: Math.min(95, Math.round((yesPoolUsd / t) * 100)), noPct: Math.max(5, 100 - Math.min(95, Math.round((yesPoolUsd / t) * 100))), yesMultiplier: t / yesPoolUsd, noMultiplier: t / H, isProjected: true };
     }
-
     if (yesPoolUsd === 0) {
-      const projectedTotal = totalVolume + HYPOTHETICAL_BET;
-      const noPct = Math.min(95, Math.round((noPoolUsd / projectedTotal) * 100));
-      return {
-        yesPct: 100 - noPct,
-        noPct,
-        yesMultiplier: projectedTotal / HYPOTHETICAL_BET,
-        noMultiplier: projectedTotal / noPoolUsd,
-        isProjected: true,
-      };
+      const t = totalVolume + H;
+      return { noPct: Math.min(95, Math.round((noPoolUsd / t) * 100)), yesPct: Math.max(5, 100 - Math.min(95, Math.round((noPoolUsd / t) * 100))), yesMultiplier: t / H, noMultiplier: t / noPoolUsd, isProjected: true };
     }
-
-    return {
-      yesPct: odds.yesPct,
-      noPct: odds.noPct,
-      yesMultiplier: odds.yesMultiplier,
-      noMultiplier: odds.noMultiplier,
-      isProjected: false,
-    };
+    return { yesPct: odds.yesPct, noPct: odds.noPct, yesMultiplier: odds.yesMultiplier, noMultiplier: odds.noMultiplier, isProjected: false };
   }, [totalVolume, yesPoolUsd, noPoolUsd, odds]);
 
-  // Balance
   const walletBalance = parseFloat(balances.wallet);
   const needsFunds = walletBalance < 1;
 
-  // Potential win — accounts for how our bet shifts the pool
+  // Accurate potential win
   const potentialWinEstimate = useMemo(() => {
     if (!selectedSide || betAmount <= 0) return 0;
     const ourSidePool = selectedSide === 'yes' ? yesPoolUsd : noPoolUsd;
@@ -119,18 +73,13 @@ export default function MarketCard({
 
   const handleSideSelect = (side: 'yes' | 'no') => {
     if (!isConnected) { onConnect(); return; }
-    setSelectedSide(side);
-    setShowBetPanel(true);
-    reset();
+    setSelectedSide(side); setShowBetPanel(true); reset();
   };
 
   const handlePlaceBet = async () => {
     if (!selectedSide || betAmount <= 0) return;
     const success = await placeBet(market.id, selectedSide === 'yes', betAmount);
-    if (success) {
-      refetchOdds();
-      setTimeout(() => { setShowBetPanel(false); setSelectedSide(null); reset(); }, 2000);
-    }
+    if (success) { refetchOdds(); setTimeout(() => { setShowBetPanel(false); setSelectedSide(null); reset(); }, 2000); }
   };
 
   const handleGetTokens = async () => {
@@ -140,24 +89,27 @@ export default function MarketCard({
 
   const handleCancel = () => { setShowBetPanel(false); setSelectedSide(null); reset(); };
 
-  // Format multiplier display
-  const fmtMultiplier = (m: number) => m >= 100 ? `${m.toFixed(0)}x` : `${m.toFixed(2)}x`;
+  const fmtMult = (m: number) => m >= 100 ? `${m.toFixed(0)}x` : `${m.toFixed(2)}x`;
+
+  const thresholdDisplay = market.isRainMarket
+    ? `${market.historicalAvg}mm`
+    : `${market.historicalAvg / 10}°C`;
 
   return (
     <div className="bg-gray-900 rounded-3xl overflow-hidden border-2 border-gray-700 shadow-2xl">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-4xl">{market.isRainMarket ? '🌧️' : '🌡️'}</span>
-            <div>
-              <h3 className="text-2xl font-bold text-white">{market.cityName}</h3>
-              <p className="text-emerald-100 text-sm">
+      {/* Card Header */}
+      <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-3xl flex-shrink-0">{market.isRainMarket ? '🌧️' : '🌡️'}</span>
+            <div className="min-w-0">
+              <h3 className="text-xl font-bold text-white truncate">{market.cityName}</h3>
+              <p className="text-emerald-100 text-xs truncate">
                 {market.isRainMarket ? t('market.rain') : t('market.temperature')}
               </p>
             </div>
           </div>
-          <span className={`px-4 py-2 rounded-full text-sm font-bold ${
+          <span className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap flex-shrink-0 ${
             market.resolved ? 'bg-gray-800 text-gray-300'
             : market.cancelled ? 'bg-red-800 text-red-300'
             : 'bg-yellow-400 text-gray-900'
@@ -169,19 +121,19 @@ export default function MarketCard({
 
       {/* User Bets */}
       {hasBet && (
-        <div className="bg-blue-900/30 border-b border-blue-700 p-4">
-          <p className="text-blue-300 text-sm font-medium mb-2">📊 {t('bet.yourBet')}</p>
-          <div className="flex gap-4">
+        <div className="bg-blue-900/30 border-b border-blue-700 px-4 py-3">
+          <p className="text-blue-300 text-xs font-medium mb-1.5">📊 {t('bet.yourBet')}</p>
+          <div className="flex gap-3 flex-wrap">
             {parseFloat(userBet!.yesAmount) > 0 && (
-              <div className="bg-green-900/50 px-3 py-2 rounded-lg">
-                <span className="text-green-400 font-bold">
+              <div className="bg-green-900/50 px-2.5 py-1.5 rounded-lg">
+                <span className="text-green-400 font-bold text-sm">
                   👍 {formatLocal(parseFloat(userBet!.yesAmount))} {t('bet.yes')}
                 </span>
               </div>
             )}
             {parseFloat(userBet!.noAmount) > 0 && (
-              <div className="bg-red-900/50 px-3 py-2 rounded-lg">
-                <span className="text-red-400 font-bold">
+              <div className="bg-red-900/50 px-2.5 py-1.5 rounded-lg">
+                <span className="text-red-400 font-bold text-sm">
                   👎 {formatLocal(parseFloat(userBet!.noAmount))} {t('bet.no')}
                 </span>
               </div>
@@ -191,99 +143,92 @@ export default function MarketCard({
       )}
 
       {/* Question */}
-      <div className="p-5 border-b border-gray-700">
-        <p className="text-xl text-white text-center font-medium">
+      <div className="p-4 border-b border-gray-700">
+        <p className="text-lg text-white text-center font-medium leading-tight">
           {t('market.willExceed')}{' '}
-          <span className="text-3xl font-bold text-yellow-400">
-            {market.isRainMarket
-              ? `${market.historicalAvg}mm`
-              : `${market.historicalAvg / 10}°C`}
-          </span>
-          ?
+          <span className="text-2xl font-bold text-yellow-400">{thresholdDisplay}</span>?
         </p>
       </div>
 
-      {/* Stats */}
+      {/* Stats — responsive grid with min-width per cell */}
       <div className="grid grid-cols-3 divide-x divide-gray-700 bg-gray-800">
-        <div className="p-4 text-center">
-          <p className="text-gray-400 text-xs">{t('market.historical')}</p>
-          <p className="text-lg font-bold text-white">
-            {market.isRainMarket ? `${market.historicalAvg}mm` : `${market.historicalAvg / 10}°C`}
+        <div className="p-3 text-center min-w-0">
+          <p className="text-gray-400 text-[10px] truncate">{t('market.historical')}</p>
+          <p className="text-base font-bold text-white truncate">{thresholdDisplay}</p>
+        </div>
+        <div className="p-3 text-center min-w-0">
+          <p className="text-gray-400 text-[10px] truncate">{t('market.timeLeft')}</p>
+          <p className="text-base font-bold text-white truncate">
+            {daysRemaining > 0 ? `${daysRemaining} ${t('market.days')}` : `${hoursRemaining} ${t('market.hours')}`}
           </p>
         </div>
-        <div className="p-4 text-center">
-          <p className="text-gray-400 text-xs">{t('market.timeLeft')}</p>
-          <p className="text-lg font-bold text-white">
-            {daysRemaining > 0
-              ? `${daysRemaining} ${t('market.days')}`
-              : `${hoursRemaining} ${t('market.hours')}`}
-          </p>
-        </div>
-        <div className="p-4 text-center">
-          <p className="text-gray-400 text-xs">Pool</p>
-          <p className="text-lg font-bold text-white">{formatLocal(totalVolume)}</p>
+        <div className="p-3 text-center min-w-0">
+          <p className="text-gray-400 text-[10px] truncate">Pool</p>
+          <p className="text-base font-bold text-white truncate">{formatLocal(totalVolume)}</p>
         </div>
       </div>
 
-      {/* Balance Display */}
+      {/* Balance */}
       {isConnected && !showBetPanel && (
-        <div className="bg-gray-800/50 p-4 border-b border-gray-700">
+        <div className="bg-gray-800/50 px-4 py-3 border-b border-gray-700">
           <div className="flex justify-between items-center">
-            <span className="text-gray-400 text-sm">💰 Balance</span>
-            <span className="text-white font-bold">{formatLocal(walletBalance)}</span>
+            <span className="text-gray-400 text-sm">💰 {t('bet.balance')}</span>
+            <span className="text-white font-bold text-sm">{formatLocal(walletBalance)}</span>
           </div>
           {needsFunds && (
             <button onClick={handleGetTokens} disabled={isProcessing}
-              className="w-full mt-3 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-lg transition-colors disabled:opacity-50">
+              className="w-full mt-2 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-sm transition-colors disabled:opacity-50">
               {isProcessing ? '⏳...' : status === 'success' ? '✅' : `🎁 ${t('bet.needFunds')}`}
             </button>
           )}
           {!needsFunds && balances.canClaimFaucet && walletBalance < 50 && (
             <button onClick={handleGetTokens} disabled={isProcessing}
-              className="w-full mt-2 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-xl font-medium text-sm transition-colors disabled:opacity-50">
+              className="w-full mt-1.5 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-xl font-medium text-xs transition-colors disabled:opacity-50">
               {isProcessing ? '⏳...' : '+ Get more test tokens'}
             </button>
           )}
           {!showBetPanel && status === 'error' && error && (
-            <div className="mt-2 p-2 bg-red-900/50 rounded-lg text-red-400 text-sm text-center">{error}</div>
+            <div className="mt-2 p-2 bg-red-900/50 rounded-lg text-red-400 text-xs text-center">{error}</div>
           )}
           {!showBetPanel && status === 'success' && (
-            <div className="mt-2 p-2 bg-green-900/50 rounded-lg text-green-400 text-sm text-center">✅</div>
+            <div className="mt-2 p-2 bg-green-900/50 rounded-lg text-green-400 text-xs text-center">✅</div>
           )}
         </div>
       )}
 
       {/* YES / NO Buttons */}
       {!market.resolved && !market.cancelled && !showBetPanel && (
-        <div className="p-5">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="p-4">
+          <div className="grid grid-cols-2 gap-3">
+            {/* YES */}
             <button onClick={() => handleSideSelect('yes')} className="group">
-              <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl p-6 transform transition-all duration-200 group-hover:scale-105 group-active:scale-95">
+              <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl p-5 transform transition-all duration-200 group-hover:scale-[1.03] group-active:scale-95">
                 <div className="text-center">
-                  <span className="text-5xl mb-2 block">👍</span>
-                  <span className="text-3xl font-black text-white block">{t('bet.yes')}</span>
-                  <span className="text-green-100 text-sm mt-2 block">{t('bet.yesWins')}</span>
-                  <div className="mt-3 bg-green-400/30 rounded-full px-4 py-1 inline-block">
-                    <span className="text-white font-bold text-lg">{displayOdds.yesPct}%</span>
+                  <span className="text-4xl mb-1 block">👍</span>
+                  <span className="text-2xl font-black text-white block">{t('bet.yes')}</span>
+                  <span className="text-green-100 text-xs mt-1 block truncate">{t('bet.yesWins')}</span>
+                  <div className="mt-2 bg-green-400/30 rounded-full px-3 py-0.5 inline-block">
+                    <span className="text-white font-bold">{displayOdds.yesPct}%</span>
                   </div>
-                  <div className="mt-1">
-                    <span className="text-green-200 text-xs">pays {fmtMultiplier(displayOdds.yesMultiplier)}</span>
+                  <div className="mt-0.5">
+                    <span className="text-green-200 text-[11px]">{fmtMult(displayOdds.yesMultiplier)}</span>
                   </div>
                 </div>
               </div>
             </button>
 
+            {/* NO */}
             <button onClick={() => handleSideSelect('no')} className="group">
-              <div className="bg-gradient-to-br from-red-500 to-rose-600 rounded-2xl p-6 transform transition-all duration-200 group-hover:scale-105 group-active:scale-95">
+              <div className="bg-gradient-to-br from-red-500 to-rose-600 rounded-2xl p-5 transform transition-all duration-200 group-hover:scale-[1.03] group-active:scale-95">
                 <div className="text-center">
-                  <span className="text-5xl mb-2 block">👎</span>
-                  <span className="text-3xl font-black text-white block">{t('bet.no')}</span>
-                  <span className="text-red-100 text-sm mt-2 block">{t('bet.noWins')}</span>
-                  <div className="mt-3 bg-red-400/30 rounded-full px-4 py-1 inline-block">
-                    <span className="text-white font-bold text-lg">{displayOdds.noPct}%</span>
+                  <span className="text-4xl mb-1 block">👎</span>
+                  <span className="text-2xl font-black text-white block">{t('bet.no')}</span>
+                  <span className="text-red-100 text-xs mt-1 block truncate">{t('bet.noWins')}</span>
+                  <div className="mt-2 bg-red-400/30 rounded-full px-3 py-0.5 inline-block">
+                    <span className="text-white font-bold">{displayOdds.noPct}%</span>
                   </div>
-                  <div className="mt-1">
-                    <span className="text-red-200 text-xs">pays {fmtMultiplier(displayOdds.noMultiplier)}</span>
+                  <div className="mt-0.5">
+                    <span className="text-red-200 text-[11px]">{fmtMult(displayOdds.noMultiplier)}</span>
                   </div>
                 </div>
               </div>
@@ -291,77 +236,66 @@ export default function MarketCard({
           </div>
 
           {displayOdds.isProjected && totalVolume > 0 && (
-            <p className="text-center text-gray-500 mt-3 text-xs">
-              * Projected for a {formatLocal(5)} bet
-            </p>
+            <p className="text-center text-gray-500 mt-2 text-[10px]">* Projected for {formatLocal(5)} bet</p>
           )}
-
           {!isConnected && (
-            <p className="text-center text-gray-400 mt-4 text-sm">{t('bet.connectFirst')}</p>
+            <p className="text-center text-gray-400 mt-3 text-sm">{t('bet.connectFirst')}</p>
           )}
         </div>
       )}
 
       {/* Bet Panel */}
       {!market.resolved && !market.cancelled && showBetPanel && (
-        <div className="p-5 space-y-5">
+        <div className="p-4 space-y-4">
           {/* Side banner */}
-          <div className={`p-4 rounded-2xl text-center ${
-            selectedSide === 'yes'
-              ? 'bg-gradient-to-r from-green-600 to-emerald-600'
-              : 'bg-gradient-to-r from-red-600 to-rose-600'
+          <div className={`p-3 rounded-2xl text-center ${
+            selectedSide === 'yes' ? 'bg-gradient-to-r from-green-600 to-emerald-600' : 'bg-gradient-to-r from-red-600 to-rose-600'
           }`}>
-            <span className="text-3xl mr-2">{selectedSide === 'yes' ? '👍' : '👎'}</span>
-            <span className="text-2xl font-bold text-white">
+            <span className="text-2xl mr-1">{selectedSide === 'yes' ? '👍' : '👎'}</span>
+            <span className="text-xl font-bold text-white">
               {selectedSide === 'yes' ? t('bet.yes') : t('bet.no')}
             </span>
           </div>
 
-          {/* Available balance */}
-          <div className="flex justify-between items-center bg-gray-800 rounded-xl p-3">
-            <span className="text-gray-400 text-sm">Available</span>
-            <span className="text-white font-bold">{formatLocal(walletBalance)}</span>
+          {/* Available */}
+          <div className="flex justify-between items-center bg-gray-800 rounded-xl px-3 py-2">
+            <span className="text-gray-400 text-xs">{t('bet.available')}</span>
+            <span className="text-white font-bold text-sm">{formatLocal(walletBalance)}</span>
           </div>
 
-          {/* Amount selection — local currency */}
+          {/* Amount presets — wraps gracefully */}
           <div>
-            <label className="block text-gray-300 text-lg mb-3 font-medium">{t('bet.amount')}</label>
-            <div className="grid grid-cols-5 gap-2 mb-4">
+            <label className="block text-gray-300 text-sm mb-2 font-medium">{t('bet.amount')}</label>
+            <div className="flex gap-1.5 mb-3 flex-wrap">
               {presetAmounts.map((amount) => (
                 <button key={amount} onClick={() => setBetAmount(amount)} disabled={isProcessing}
-                  className={`py-3 px-1 rounded-xl text-sm font-bold transition-all ${
-                    betAmount === amount
-                      ? 'bg-yellow-400 text-gray-900 scale-105'
-                      : 'bg-gray-700 text-white hover:bg-gray-600'
+                  className={`flex-1 min-w-[52px] py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    betAmount === amount ? 'bg-yellow-400 text-gray-900 scale-105' : 'bg-gray-700 text-white hover:bg-gray-600'
                   } ${isProcessing ? 'opacity-50' : ''}`}>
                   {formatLocal(amount)}
                 </button>
               ))}
             </div>
-            <input
-              type="number"
-              value={betAmount}
-              onChange={(e) => setBetAmount(Number(e.target.value))}
-              disabled={isProcessing}
-              className="w-full px-4 py-4 bg-gray-700 border-2 border-gray-600 rounded-xl text-white text-xl text-center font-bold focus:ring-2 focus:ring-yellow-400 focus:border-transparent disabled:opacity-50"
-              min="1"
-            />
-            <p className="text-gray-500 text-xs mt-2 text-center">≈ {betAmount} USDm</p>
+            <input type="number" value={betAmount}
+              onChange={(e) => setBetAmount(Number(e.target.value))} disabled={isProcessing}
+              className="w-full px-4 py-3 bg-gray-700 border-2 border-gray-600 rounded-xl text-white text-lg text-center font-bold focus:ring-2 focus:ring-yellow-400 focus:border-transparent disabled:opacity-50"
+              min="1" />
+            <p className="text-gray-500 text-[10px] mt-1 text-center">≈ {betAmount} USDm</p>
           </div>
 
-          {/* Bet summary */}
-          <div className="bg-gray-800 rounded-2xl p-4 space-y-3">
-            <div className="flex justify-between items-center text-lg">
-              <span className="text-gray-400">{t('bet.yourBet')}</span>
+          {/* Summary */}
+          <div className="bg-gray-800 rounded-2xl p-3 space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-400 text-sm">{t('bet.yourBet')}</span>
               <span className="text-white font-bold">{formatLocal(betAmount)}</span>
             </div>
-            <div className="flex justify-between items-center text-lg">
-              <span className="text-gray-400">{t('bet.potentialWin')}</span>
-              <span className="text-yellow-400 font-bold text-2xl">{formatLocal(potentialWinEstimate)}</span>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-400 text-sm">{t('bet.potentialWin')}</span>
+              <span className="text-yellow-400 font-bold text-xl">{formatLocal(potentialWinEstimate)}</span>
             </div>
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-gray-500">Net profit</span>
-              <span className="text-green-400 font-medium">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-500 text-xs">{t('bet.netProfit')}</span>
+              <span className="text-green-400 font-medium text-sm">
                 +{formatLocal(Math.max(0, potentialWinEstimate - betAmount))}
               </span>
             </div>
@@ -369,10 +303,10 @@ export default function MarketCard({
 
           {/* Not enough funds */}
           {walletBalance < betAmount && (
-            <div className="p-3 bg-yellow-900/50 rounded-xl text-yellow-400 text-center">
-              <p className="font-medium">Not enough funds ({formatLocal(walletBalance)} available)</p>
+            <div className="p-2.5 bg-yellow-900/50 rounded-xl text-yellow-400 text-center text-sm">
+              <p className="font-medium">Not enough ({formatLocal(walletBalance)} available)</p>
               <button onClick={handleGetTokens} disabled={isProcessing}
-                className="mt-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50">
+                className="mt-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium text-xs transition-colors disabled:opacity-50">
                 🎁 {t('bet.needFunds')}
               </button>
             </div>
@@ -380,7 +314,7 @@ export default function MarketCard({
 
           {/* Status */}
           {status !== 'idle' && (
-            <div className={`p-4 rounded-xl text-center font-medium ${
+            <div className={`p-3 rounded-xl text-center text-sm font-medium ${
               status === 'success' ? 'bg-green-900/50 text-green-400'
               : status === 'error' ? 'bg-red-900/50 text-red-400'
               : 'bg-blue-900/50 text-blue-400'
@@ -393,18 +327,16 @@ export default function MarketCard({
             </div>
           )}
 
-          {/* Action buttons */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Actions */}
+          <div className="grid grid-cols-2 gap-3">
             <button onClick={handleCancel} disabled={isProcessing}
-              className="py-4 px-6 bg-gray-700 rounded-xl text-white text-lg font-bold hover:bg-gray-600 transition-colors disabled:opacity-50">
+              className="py-3.5 bg-gray-700 rounded-xl text-white font-bold hover:bg-gray-600 transition-colors disabled:opacity-50 text-sm truncate">
               {t('bet.cancel')}
             </button>
             <button onClick={handlePlaceBet}
               disabled={isProcessing || status === 'success' || walletBalance < betAmount}
-              className={`py-4 px-6 rounded-xl text-lg font-bold transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:transform-none ${
-                selectedSide === 'yes'
-                  ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white'
-                  : 'bg-gradient-to-r from-red-500 to-rose-600 text-white'
+              className={`py-3.5 rounded-xl font-bold transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:transform-none text-sm truncate ${
+                selectedSide === 'yes' ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white' : 'bg-gradient-to-r from-red-500 to-rose-600 text-white'
               }`}>
               {isProcessing ? '⏳' : t('bet.placeBet')}
             </button>
@@ -414,20 +346,15 @@ export default function MarketCard({
 
       {/* Resolved */}
       {market.resolved && (
-        <div className="p-5">
-          <div className={`p-6 rounded-2xl text-center ${
-            market.outcome
-              ? 'bg-gradient-to-r from-green-600 to-emerald-600'
-              : 'bg-gradient-to-r from-red-600 to-rose-600'
+        <div className="p-4">
+          <div className={`p-5 rounded-2xl text-center ${
+            market.outcome ? 'bg-gradient-to-r from-green-600 to-emerald-600' : 'bg-gradient-to-r from-red-600 to-rose-600'
           }`}>
-            <span className="text-5xl mb-2 block">{market.outcome ? '👍' : '👎'}</span>
-            <p className="text-2xl font-bold text-white">
-              {market.outcome ? t('bet.yes') : t('bet.no')}!
-            </p>
+            <span className="text-4xl mb-1 block">{market.outcome ? '👍' : '👎'}</span>
+            <p className="text-xl font-bold text-white">{market.outcome ? t('bet.yes') : t('bet.no')}!</p>
           </div>
         </div>
       )}
     </div>
   );
 }
-
