@@ -7,7 +7,7 @@ import { useAppKit } from '@reown/appkit/react';
 
 export default function Home() {
   const { markets, loading, error, refetchMarkets } = useMarkets();
-  const { currencySymbol, formatInFiat } = useCurrency();
+  const { targetCurrency, formatCurrency } = useCurrency();
   const { open } = useAppKit();
 
   const handleConnect = () => {
@@ -16,7 +16,6 @@ export default function Home() {
 
   return (
     <main className="max-w-lg mx-auto px-4 py-6 space-y-6">
-      {/* Loading */}
       {loading && (
         <div className="text-center py-20">
           <div className="text-6xl mb-4 animate-bounce">🌤️</div>
@@ -24,7 +23,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Error */}
       {error && (
         <div className="bg-red-900/50 border border-red-700 rounded-2xl p-6 text-center">
           <p className="text-red-400 font-medium">{error}</p>
@@ -37,7 +35,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Markets */}
       {!loading && !error && markets.length === 0 && (
         <div className="text-center py-20">
           <div className="text-6xl mb-4">🏜️</div>
@@ -49,13 +46,12 @@ export default function Home() {
         <MarketCard
           key={market.id}
           market={market}
-          currencySymbol={currencySymbol}
-          formatCurrency={formatInFiat}
+          currencySymbol={targetCurrency}
+          formatCurrency={formatCurrency}
           onConnect={handleConnect}
         />
       ))}
 
-      {/* Footer */}
       {!loading && markets.length > 0 && (
         <footer className="text-center py-8">
           <p className="text-xs text-gray-500">
