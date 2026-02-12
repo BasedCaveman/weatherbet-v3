@@ -530,3 +530,4 @@ export default function MarketCard({
     </div>
   );
 }
+
