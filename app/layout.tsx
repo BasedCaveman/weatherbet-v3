@@ -7,7 +7,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "WeatherBet - Bet on Weather in Your City",
-  description: "Place bets on weather outcomes in capital cities worldwide.",
+  description: "Place bets on weather outcomes in cities worldwide.",
 };
 
 export default function RootLayout({
