@@ -182,10 +182,11 @@ export function useBetting() {
         return false;
       }
 
-      // Step 1: Approve if needed (one-time MaxUint256)
+      // Step 1: Approve if needed (capped at 10,000 USDm for safety)
       if (allowance < amountWei) {
         setStatus('approving');
-        const approveTx = await usdm.approve(CONTRACT_ADDRESSES.POOL, ethers.MaxUint256);
+        const approvalCap = ethers.parseUnits('10000', 6); // 10,000 USDm
+        const approveTx = await usdm.approve(CONTRACT_ADDRESSES.POOL, approvalCap);
         await approveTx.wait();
       }
 
@@ -284,3 +285,4 @@ export function useBetting() {
     reset,
   };
 }
+
