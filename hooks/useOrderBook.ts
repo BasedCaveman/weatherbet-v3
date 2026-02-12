@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ethers } from 'ethers';
-import { CONTRACT_ADDRESSES, ORDER_BOOK_ABI, CHAIN_CONFIG } from '../lib/contracts';
+import { CONTRACT_ADDRESSES, POOL_ABI, CHAIN_CONFIG } from '../lib/contracts';
 
 export interface Market {
   id: number;
@@ -27,8 +27,8 @@ export function useMarkets() {
       try {
         const provider = new ethers.JsonRpcProvider(CHAIN_CONFIG.rpcUrl);
         const contract = new ethers.Contract(
-          CONTRACT_ADDRESSES.ORDER_BOOK,
-          ORDER_BOOK_ABI,
+          CONTRACT_ADDRESSES.POOL,
+          POOL_ABI,
           provider
         );
 
@@ -83,8 +83,8 @@ export function useMarketPrices(marketId: number) {
       try {
         const provider = new ethers.JsonRpcProvider(CHAIN_CONFIG.rpcUrl);
         const contract = new ethers.Contract(
-          CONTRACT_ADDRESSES.ORDER_BOOK,
-          ORDER_BOOK_ABI,
+          CONTRACT_ADDRESSES.POOL,
+          POOL_ABI,
           provider
         );
 
