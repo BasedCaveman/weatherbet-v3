@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Market, useMarketPrices } from '../hooks/useOrderBook';
+import { Market, useMarketOdds } from '../hooks/useOrderBook';
 import { useBetting } from '../hooks/useBetting';
 import { useTranslation } from '../hooks/useTranslation';
 
@@ -19,59 +19,56 @@ export default function MarketCard({
   onConnect,
 }: MarketCardProps) {
   const { t } = useTranslation();
-  const { 
-    isConnected, 
-    balances, 
-    positions,
-    placeBet, 
+  const {
+    isConnected,
+    balances,
+    userBets,
+    placeBet,
     getTestTokens,
-    status, 
-    error, 
+    status,
+    error,
     reset,
-    refreshPositions,
-    refreshBalances,
+    refreshUserBets,
   } = useBetting();
-  
-  const prices = useMarketPrices(market.id);
-  
+
+  const { odds, refetchOdds } = useMarketOdds(market.id);
+
   const [selectedSide, setSelectedSide] = useState<'yes' | 'no' | null>(null);
   const [betAmount, setBetAmount] = useState<number>(10);
   const [showBetPanel, setShowBetPanel] = useState(false);
 
-  // Refresh positions when connected
+  // Refresh user bets when connected
   useEffect(() => {
     if (isConnected) {
-      refreshPositions([market.id]);
+      refreshUserBets([market.id]);
     }
-  }, [isConnected, market.id, refreshPositions]);
+  }, [isConnected, market.id, refreshUserBets]);
 
-  // Get user's position in this market
-  const userPosition = positions.find(p => p.marketId === market.id);
-  const hasPosition = userPosition && (parseFloat(userPosition.yesShares) > 0 || parseFloat(userPosition.noShares) > 0);
+  // User's bet in this market
+  const userBet = userBets.find(b => b.marketId === market.id);
+  const hasBet = userBet && (parseFloat(userBet.yesAmount) > 0 || parseFloat(userBet.noAmount) > 0);
 
-  // Calculate time remaining
+  // Time remaining
   const now = Date.now() / 1000;
   const timeRemaining = market.endTime - now;
   const daysRemaining = Math.max(0, Math.floor(timeRemaining / 86400));
   const hoursRemaining = Math.max(0, Math.floor((timeRemaining % 86400) / 3600));
 
-  // Calculate odds from actual betting volume (not empty order book)
-  const totalYes = Number(market.totalYesShares);
-  const totalNo = Number(market.totalNoShares);
-  const totalVolume = totalYes + totalNo;
-  // More YES bets → YES costs more (lower payout) → higher YES probability displayed
-  const yesProbability = totalVolume > 0 
-    ? Math.round((totalYes / totalVolume) * 100)
-    : 50;
-  const noProbability = 100 - yesProbability;
+  // Pool volume in USD
+  const yesPoolUsd = Number(market.yesPool) / 1e6;
+  const noPoolUsd = Number(market.noPool) / 1e6;
+  const totalVolume = yesPoolUsd + noPoolUsd;
 
-  // Calculate payout multiplier based on odds
-  const yesMultiplier = yesProbability > 0 ? (100 / yesProbability) : 2;
-  const noMultiplier = noProbability > 0 ? (100 / noProbability) : 2;
+  // Balance
+  const walletBalance = parseFloat(balances.wallet);
+  const needsFunds = walletBalance < 5;
 
-  // Show total available funds (wallet + deposited)
-  const totalBalance = parseFloat(balances.total);
-  const needsFunds = totalBalance < 5;
+  // Potential win
+  const selectedMultiplier = selectedSide === 'yes' ? odds.yesMultiplier : odds.noMultiplier;
+  const potentialWin = betAmount * selectedMultiplier;
+
+  const isProcessing = status === 'preparing' || status === 'approving' || status === 'confirming';
+  const presetAmounts = [5, 10, 25, 50];
 
   const handleSideSelect = (side: 'yes' | 'no') => {
     if (!isConnected) {
@@ -85,10 +82,11 @@ export default function MarketCard({
 
   const handlePlaceBet = async () => {
     if (!selectedSide || betAmount <= 0) return;
-    
+
     const success = await placeBet(market.id, selectedSide === 'yes', betAmount);
-    
+
     if (success) {
+      refetchOdds();
       setTimeout(() => {
         setShowBetPanel(false);
         setSelectedSide(null);
@@ -110,13 +108,6 @@ export default function MarketCard({
     reset();
   };
 
-  const presetAmounts = [5, 10, 25, 50];
-  const isProcessing = status === 'preparing' || status === 'approving' || status === 'depositing' || status === 'confirming';
-
-  // Calculate potential win based on selected side's multiplier
-  const selectedMultiplier = selectedSide === 'yes' ? yesMultiplier : noMultiplier;
-  const potentialWin = betAmount * selectedMultiplier;
-
   return (
     <div className="bg-gray-900 rounded-3xl overflow-hidden border-2 border-gray-700 shadow-2xl">
       {/* Header */}
@@ -134,31 +125,33 @@ export default function MarketCard({
             </div>
           </div>
           <span className={`px-4 py-2 rounded-full text-sm font-bold ${
-            market.resolved 
-              ? 'bg-gray-800 text-gray-300' 
+            market.resolved
+              ? 'bg-gray-800 text-gray-300'
+              : market.cancelled
+              ? 'bg-red-800 text-red-300'
               : 'bg-yellow-400 text-gray-900'
           }`}>
-            {market.resolved ? t('market.resolved') : t('market.active')}
+            {market.resolved ? t('market.resolved') : market.cancelled ? 'Cancelled' : t('market.active')}
           </span>
         </div>
       </div>
 
-      {/* User Position (if any) */}
-      {hasPosition && (
+      {/* User Bets */}
+      {hasBet && (
         <div className="bg-blue-900/30 border-b border-blue-700 p-4">
-          <p className="text-blue-300 text-sm font-medium mb-2">📊 Your Position</p>
+          <p className="text-blue-300 text-sm font-medium mb-2">📊 Your Bets</p>
           <div className="flex gap-4">
-            {parseFloat(userPosition!.yesShares) > 0 && (
+            {parseFloat(userBet!.yesAmount) > 0 && (
               <div className="bg-green-900/50 px-3 py-2 rounded-lg">
                 <span className="text-green-400 font-bold">
-                  👍 {parseFloat(userPosition!.yesShares).toFixed(2)} YES
+                  👍 ${parseFloat(userBet!.yesAmount).toFixed(2)} on YES
                 </span>
               </div>
             )}
-            {parseFloat(userPosition!.noShares) > 0 && (
+            {parseFloat(userBet!.noAmount) > 0 && (
               <div className="bg-red-900/50 px-3 py-2 rounded-lg">
                 <span className="text-red-400 font-bold">
-                  👎 {parseFloat(userPosition!.noShares).toFixed(2)} NO
+                  👎 ${parseFloat(userBet!.noAmount).toFixed(2)} on NO
                 </span>
               </div>
             )}
@@ -171,8 +164,8 @@ export default function MarketCard({
         <p className="text-xl text-white text-center font-medium">
           {t('market.willExceed')}{' '}
           <span className="text-3xl font-bold text-yellow-400">
-            {market.isRainMarket 
-              ? `${market.historicalAvg}mm` 
+            {market.isRainMarket
+              ? `${market.historicalAvg}mm`
               : `${market.historicalAvg / 10}°C`}
           </span>
           ?
@@ -184,36 +177,34 @@ export default function MarketCard({
         <div className="p-4 text-center">
           <p className="text-gray-400 text-xs">{t('market.historical')}</p>
           <p className="text-lg font-bold text-white">
-            {market.isRainMarket 
-              ? `${market.historicalAvg}mm` 
+            {market.isRainMarket
+              ? `${market.historicalAvg}mm`
               : `${market.historicalAvg / 10}°C`}
           </p>
         </div>
         <div className="p-4 text-center">
           <p className="text-gray-400 text-xs">{t('market.timeLeft')}</p>
           <p className="text-lg font-bold text-white">
-            {daysRemaining > 0 
-              ? `${daysRemaining} ${t('market.days')}` 
+            {daysRemaining > 0
+              ? `${daysRemaining} ${t('market.days')}`
               : `${hoursRemaining} ${t('market.hours')}`}
           </p>
         </div>
         <div className="p-4 text-center">
-          <p className="text-gray-400 text-xs">Volume</p>
+          <p className="text-gray-400 text-xs">Pool</p>
           <p className="text-lg font-bold text-white">
-            {totalVolume > 0 
-              ? `$${(totalVolume / 1e6).toFixed(0)}` 
-              : '$0'}
+            ${totalVolume.toFixed(0)}
           </p>
         </div>
       </div>
 
-      {/* Balance Display (when connected) */}
+      {/* Balance Display */}
       {isConnected && !showBetPanel && (
         <div className="bg-gray-800/50 p-4 border-b border-gray-700">
           <div className="flex justify-between items-center">
             <span className="text-gray-400 text-sm">💰 Your Balance</span>
             <span className="text-white font-bold">
-              ${parseFloat(balances.total).toFixed(2)} USDm
+              ${walletBalance.toFixed(2)} USDm
             </span>
           </div>
           {needsFunds && (
@@ -222,18 +213,18 @@ export default function MarketCard({
               disabled={isProcessing}
               className="w-full mt-3 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-lg transition-colors disabled:opacity-50"
             >
-              {isProcessing ? '⏳ Getting tokens...' : 
-               status === 'success' ? '✅ 100 USDm received!' :
-               '🎁 Get Free Test Tokens (100 USDm)'}
+              {isProcessing ? '⏳ Getting tokens...' :
+               status === 'success' ? '✅ Tokens received!' :
+               '🎁 Get Free Test Tokens'}
             </button>
           )}
-          {!needsFunds && balances.canClaimFaucet && totalBalance < 50 && (
+          {!needsFunds && balances.canClaimFaucet && walletBalance < 50 && (
             <button
               onClick={handleGetTokens}
               disabled={isProcessing}
               className="w-full mt-2 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-xl font-medium text-sm transition-colors disabled:opacity-50"
             >
-              {isProcessing ? '⏳ Getting tokens...' : '+ Get more test tokens'}
+              {isProcessing ? '⏳...' : '+ Get more test tokens'}
             </button>
           )}
           {!showBetPanel && status === 'error' && error && (
@@ -243,52 +234,46 @@ export default function MarketCard({
           )}
           {!showBetPanel && status === 'success' && (
             <div className="mt-2 p-2 bg-green-900/50 rounded-lg text-green-400 text-sm text-center">
-              ✅ Tokens received! You can now place bets.
+              ✅ Tokens received!
             </div>
           )}
         </div>
       )}
 
-      {/* YES/NO Buttons */}
-      {!market.resolved && !showBetPanel && (
+      {/* YES / NO Buttons */}
+      {!market.resolved && !market.cancelled && !showBetPanel && (
         <div className="p-5">
           <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => handleSideSelect('yes')}
-              className="group"
-            >
+            <button onClick={() => handleSideSelect('yes')} className="group">
               <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl p-6 transform transition-all duration-200 group-hover:scale-105 group-active:scale-95">
                 <div className="text-center">
                   <span className="text-5xl mb-2 block">👍</span>
                   <span className="text-3xl font-black text-white block">{t('bet.yes')}</span>
                   <span className="text-green-100 text-sm mt-2 block">{t('bet.yesWins')}</span>
                   <div className="mt-3 bg-green-400/30 rounded-full px-4 py-1 inline-block">
-                    <span className="text-white font-bold text-lg">{yesProbability}%</span>
+                    <span className="text-white font-bold text-lg">{odds.yesPct}%</span>
                   </div>
                   {totalVolume > 0 && (
                     <div className="mt-1">
-                      <span className="text-green-200 text-xs">pays {yesMultiplier.toFixed(2)}x</span>
+                      <span className="text-green-200 text-xs">pays {odds.yesMultiplier.toFixed(2)}x</span>
                     </div>
                   )}
                 </div>
               </div>
             </button>
 
-            <button
-              onClick={() => handleSideSelect('no')}
-              className="group"
-            >
+            <button onClick={() => handleSideSelect('no')} className="group">
               <div className="bg-gradient-to-br from-red-500 to-rose-600 rounded-2xl p-6 transform transition-all duration-200 group-hover:scale-105 group-active:scale-95">
                 <div className="text-center">
                   <span className="text-5xl mb-2 block">👎</span>
                   <span className="text-3xl font-black text-white block">{t('bet.no')}</span>
                   <span className="text-red-100 text-sm mt-2 block">{t('bet.noWins')}</span>
                   <div className="mt-3 bg-red-400/30 rounded-full px-4 py-1 inline-block">
-                    <span className="text-white font-bold text-lg">{noProbability}%</span>
+                    <span className="text-white font-bold text-lg">{odds.noPct}%</span>
                   </div>
                   {totalVolume > 0 && (
                     <div className="mt-1">
-                      <span className="text-red-200 text-xs">pays {noMultiplier.toFixed(2)}x</span>
+                      <span className="text-red-200 text-xs">pays {odds.noMultiplier.toFixed(2)}x</span>
                     </div>
                   )}
                 </div>
@@ -305,11 +290,12 @@ export default function MarketCard({
       )}
 
       {/* Bet Panel */}
-      {!market.resolved && showBetPanel && (
+      {!market.resolved && !market.cancelled && showBetPanel && (
         <div className="p-5 space-y-5">
+          {/* Selected side banner */}
           <div className={`p-4 rounded-2xl text-center ${
-            selectedSide === 'yes' 
-              ? 'bg-gradient-to-r from-green-600 to-emerald-600' 
+            selectedSide === 'yes'
+              ? 'bg-gradient-to-r from-green-600 to-emerald-600'
               : 'bg-gradient-to-r from-red-600 to-rose-600'
           }`}>
             <span className="text-3xl mr-2">
@@ -319,16 +305,17 @@ export default function MarketCard({
               {selectedSide === 'yes' ? t('bet.yes') : t('bet.no')}
             </span>
             <span className="text-white/70 text-sm ml-2">
-              ({selectedSide === 'yes' ? yesProbability : noProbability}% odds • {selectedMultiplier.toFixed(2)}x payout)
+              ({selectedSide === 'yes' ? odds.yesPct : odds.noPct}% • {selectedMultiplier.toFixed(2)}x)
             </span>
           </div>
 
-          {/* Show balance in bet panel */}
+          {/* Available balance */}
           <div className="flex justify-between items-center bg-gray-800 rounded-xl p-3">
             <span className="text-gray-400 text-sm">Available</span>
-            <span className="text-white font-bold">${parseFloat(balances.total).toFixed(2)} USDm</span>
+            <span className="text-white font-bold">${walletBalance.toFixed(2)} USDm</span>
           </div>
 
+          {/* Amount selection */}
           <div>
             <label className="block text-gray-300 text-lg mb-3 font-medium">
               {t('bet.amount')}
@@ -359,6 +346,7 @@ export default function MarketCard({
             />
           </div>
 
+          {/* Bet summary */}
           <div className="bg-gray-800 rounded-2xl p-4 space-y-3">
             <div className="flex justify-between items-center text-lg">
               <span className="text-gray-400">{t('bet.yourBet')}</span>
@@ -372,10 +360,10 @@ export default function MarketCard({
             </div>
           </div>
 
-          {/* Not enough funds warning */}
-          {totalBalance < betAmount && (
+          {/* Not enough funds */}
+          {walletBalance < betAmount && (
             <div className="p-3 bg-yellow-900/50 rounded-xl text-yellow-400 text-center">
-              <p className="font-medium">Not enough funds (${totalBalance.toFixed(2)} available)</p>
+              <p className="font-medium">Not enough funds (${walletBalance.toFixed(2)} available)</p>
               <button
                 onClick={handleGetTokens}
                 disabled={isProcessing}
@@ -386,24 +374,24 @@ export default function MarketCard({
             </div>
           )}
 
-          {/* Status Messages */}
+          {/* Status messages */}
           {status !== 'idle' && (
             <div className={`p-4 rounded-xl text-center font-medium ${
-              status === 'success' 
-                ? 'bg-green-900/50 text-green-400' 
+              status === 'success'
+                ? 'bg-green-900/50 text-green-400'
                 : status === 'error'
                 ? 'bg-red-900/50 text-red-400'
                 : 'bg-blue-900/50 text-blue-400'
             }`}>
               {status === 'preparing' && '⏳ Preparing...'}
-              {status === 'approving' && '✍️ Step 1/3: Approve token (one-time only)...'}
-              {status === 'depositing' && '✍️ Step 2/3: Depositing funds...'}
-              {status === 'confirming' && '✍️ Final step: Placing your bet...'}
+              {status === 'approving' && '✍️ Step 1/2: Approve token (one-time only)...'}
+              {status === 'confirming' && '✍️ Placing your bet...'}
               {status === 'success' && '✅ Bet placed!'}
               {status === 'error' && `❌ ${error}`}
             </div>
           )}
 
+          {/* Action buttons */}
           <div className="grid grid-cols-2 gap-4">
             <button
               onClick={handleCancel}
@@ -414,7 +402,7 @@ export default function MarketCard({
             </button>
             <button
               onClick={handlePlaceBet}
-              disabled={isProcessing || status === 'success' || totalBalance < betAmount}
+              disabled={isProcessing || status === 'success' || walletBalance < betAmount}
               className={`py-4 px-6 rounded-xl text-lg font-bold transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:transform-none ${
                 selectedSide === 'yes'
                   ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white'
@@ -431,8 +419,8 @@ export default function MarketCard({
       {market.resolved && (
         <div className="p-5">
           <div className={`p-6 rounded-2xl text-center ${
-            market.outcome 
-              ? 'bg-gradient-to-r from-green-600 to-emerald-600' 
+            market.outcome
+              ? 'bg-gradient-to-r from-green-600 to-emerald-600'
               : 'bg-gradient-to-r from-red-600 to-rose-600'
           }`}>
             <span className="text-5xl mb-2 block">
@@ -447,3 +435,4 @@ export default function MarketCard({
     </div>
   );
 }
+
