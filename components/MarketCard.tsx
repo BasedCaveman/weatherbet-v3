@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Market, useMarketOdds } from '../hooks/useOrderBook';
 import { useBetting } from '../hooks/useBetting';
 import { useTranslation } from '../hooks/useTranslation';
@@ -34,7 +34,7 @@ export default function MarketCard({
   const { odds, refetchOdds } = useMarketOdds(market.id);
 
   const [selectedSide, setSelectedSide] = useState<'yes' | 'no' | null>(null);
-  const [betAmount, setBetAmount] = useState<number>(10);
+  const [betAmount, setBetAmount] = useState<number>(5);
   const [showBetPanel, setShowBetPanel] = useState(false);
 
   // Refresh user bets when connected
@@ -54,21 +54,91 @@ export default function MarketCard({
   const daysRemaining = Math.max(0, Math.floor(timeRemaining / 86400));
   const hoursRemaining = Math.max(0, Math.floor((timeRemaining % 86400) / 3600));
 
-  // Pool volume in USD
+  // Pool volume in USDm
   const yesPoolUsd = Number(market.yesPool) / 1e6;
   const noPoolUsd = Number(market.noPool) / 1e6;
   const totalVolume = yesPoolUsd + noPoolUsd;
 
+  // Smart odds display
+  // When one side is empty, show projected odds for a hypothetical $5 bet
+  // This encourages the first bettor on the empty side
+  const displayOdds = useMemo(() => {
+    const HYPOTHETICAL_BET = 5; // $5 USDm
+
+    if (totalVolume === 0) {
+      // No bets at all — show 50/50 with 2x
+      return {
+        yesPct: 50,
+        noPct: 50,
+        yesMultiplier: 2.0,
+        noMultiplier: 2.0,
+        isProjected: false,
+      };
+    }
+
+    if (noPoolUsd === 0) {
+      // Only YES bets exist — project what NO would look like
+      const projectedTotal = totalVolume + HYPOTHETICAL_BET;
+      const noMultiplier = projectedTotal / HYPOTHETICAL_BET;
+      // Show at least 5% for NO to indicate it's still possible
+      const yesPct = Math.min(95, Math.round((yesPoolUsd / projectedTotal) * 100));
+      return {
+        yesPct,
+        noPct: 100 - yesPct,
+        yesMultiplier: projectedTotal / yesPoolUsd,
+        noMultiplier,
+        isProjected: true,
+      };
+    }
+
+    if (yesPoolUsd === 0) {
+      // Only NO bets exist — project what YES would look like
+      const projectedTotal = totalVolume + HYPOTHETICAL_BET;
+      const yesMultiplier = projectedTotal / HYPOTHETICAL_BET;
+      const noPct = Math.min(95, Math.round((noPoolUsd / projectedTotal) * 100));
+      return {
+        yesPct: 100 - noPct,
+        noPct,
+        yesMultiplier,
+        noMultiplier: projectedTotal / noPoolUsd,
+        isProjected: true,
+      };
+    }
+
+    // Both sides have bets — use real odds from contract
+    return {
+      yesPct: odds.yesPct,
+      noPct: odds.noPct,
+      yesMultiplier: odds.yesMultiplier,
+      noMultiplier: odds.noMultiplier,
+      isProjected: false,
+    };
+  }, [totalVolume, yesPoolUsd, noPoolUsd, odds]);
+
   // Balance
   const walletBalance = parseFloat(balances.wallet);
-  const needsFunds = walletBalance < 5;
+  const needsFunds = walletBalance < 1;
 
-  // Potential win
-  const selectedMultiplier = selectedSide === 'yes' ? odds.yesMultiplier : odds.noMultiplier;
-  const potentialWin = betAmount * selectedMultiplier;
+  // Potential win — calculate including how our bet shifts the pool
+  const selectedMultiplier = selectedSide === 'yes' ? displayOdds.yesMultiplier : displayOdds.noMultiplier;
+  const potentialWinEstimate = useMemo(() => {
+    if (!selectedSide || betAmount <= 0) return 0;
+
+    // More accurate: calculate what our bet WOULD return
+    // newTotal = totalVolume + betAmount
+    // our share of winning pool = betAmount / (ourSidePool + betAmount)
+    // payout = share × newTotal
+    const ourSidePool = selectedSide === 'yes' ? yesPoolUsd : noPoolUsd;
+    const newTotal = totalVolume + betAmount;
+    const newSidePool = ourSidePool + betAmount;
+    const payout = (betAmount / newSidePool) * newTotal;
+    const profit = payout - betAmount;
+    const fee = profit * 0.005; // 0.5% fee on profit
+    return payout - fee;
+  }, [selectedSide, betAmount, totalVolume, yesPoolUsd, noPoolUsd]);
 
   const isProcessing = status === 'preparing' || status === 'approving' || status === 'confirming';
-  const presetAmounts = [5, 10, 25, 50];
+  const presetAmounts = [1, 5, 10, 25, 50];
 
   const handleSideSelect = (side: 'yes' | 'no') => {
     if (!isConnected) {
@@ -108,6 +178,11 @@ export default function MarketCard({
     reset();
   };
 
+  // Format display helper — uses local currency via formatCurrency prop
+  const fmtLocal = (usdAmount: number) => {
+    return formatCurrency(usdAmount);
+  };
+
   return (
     <div className="bg-gray-900 rounded-3xl overflow-hidden border-2 border-gray-700 shadow-2xl">
       {/* Header */}
@@ -144,14 +219,14 @@ export default function MarketCard({
             {parseFloat(userBet!.yesAmount) > 0 && (
               <div className="bg-green-900/50 px-3 py-2 rounded-lg">
                 <span className="text-green-400 font-bold">
-                  👍 ${parseFloat(userBet!.yesAmount).toFixed(2)} on YES
+                  👍 {fmtLocal(parseFloat(userBet!.yesAmount))} on YES
                 </span>
               </div>
             )}
             {parseFloat(userBet!.noAmount) > 0 && (
               <div className="bg-red-900/50 px-3 py-2 rounded-lg">
                 <span className="text-red-400 font-bold">
-                  👎 ${parseFloat(userBet!.noAmount).toFixed(2)} on NO
+                  👎 {fmtLocal(parseFloat(userBet!.noAmount))} on NO
                 </span>
               </div>
             )}
@@ -193,7 +268,7 @@ export default function MarketCard({
         <div className="p-4 text-center">
           <p className="text-gray-400 text-xs">Pool</p>
           <p className="text-lg font-bold text-white">
-            ${totalVolume.toFixed(0)}
+            {fmtLocal(totalVolume)}
           </p>
         </div>
       </div>
@@ -204,7 +279,7 @@ export default function MarketCard({
           <div className="flex justify-between items-center">
             <span className="text-gray-400 text-sm">💰 Your Balance</span>
             <span className="text-white font-bold">
-              ${walletBalance.toFixed(2)} USDm
+              {fmtLocal(walletBalance)}
             </span>
           </div>
           {needsFunds && (
@@ -251,13 +326,16 @@ export default function MarketCard({
                   <span className="text-3xl font-black text-white block">{t('bet.yes')}</span>
                   <span className="text-green-100 text-sm mt-2 block">{t('bet.yesWins')}</span>
                   <div className="mt-3 bg-green-400/30 rounded-full px-4 py-1 inline-block">
-                    <span className="text-white font-bold text-lg">{odds.yesPct}%</span>
+                    <span className="text-white font-bold text-lg">{displayOdds.yesPct}%</span>
                   </div>
-                  {totalVolume > 0 && (
-                    <div className="mt-1">
-                      <span className="text-green-200 text-xs">pays {odds.yesMultiplier.toFixed(2)}x</span>
-                    </div>
-                  )}
+                  <div className="mt-1">
+                    <span className="text-green-200 text-xs">
+                      {displayOdds.yesMultiplier >= 100
+                        ? `pays ${displayOdds.yesMultiplier.toFixed(0)}x`
+                        : `pays ${displayOdds.yesMultiplier.toFixed(2)}x`
+                      }
+                    </span>
+                  </div>
                 </div>
               </div>
             </button>
@@ -269,17 +347,27 @@ export default function MarketCard({
                   <span className="text-3xl font-black text-white block">{t('bet.no')}</span>
                   <span className="text-red-100 text-sm mt-2 block">{t('bet.noWins')}</span>
                   <div className="mt-3 bg-red-400/30 rounded-full px-4 py-1 inline-block">
-                    <span className="text-white font-bold text-lg">{odds.noPct}%</span>
+                    <span className="text-white font-bold text-lg">{displayOdds.noPct}%</span>
                   </div>
-                  {totalVolume > 0 && (
-                    <div className="mt-1">
-                      <span className="text-red-200 text-xs">pays {odds.noMultiplier.toFixed(2)}x</span>
-                    </div>
-                  )}
+                  <div className="mt-1">
+                    <span className="text-red-200 text-xs">
+                      {displayOdds.noMultiplier >= 100
+                        ? `pays ${displayOdds.noMultiplier.toFixed(0)}x`
+                        : `pays ${displayOdds.noMultiplier.toFixed(2)}x`
+                      }
+                    </span>
+                  </div>
                 </div>
               </div>
             </button>
           </div>
+
+          {/* Projected odds hint */}
+          {displayOdds.isProjected && totalVolume > 0 && (
+            <p className="text-center text-gray-500 mt-3 text-xs">
+              * Projected odds based on current pool of {fmtLocal(totalVolume)}
+            </p>
+          )}
 
           {!isConnected && (
             <p className="text-center text-gray-400 mt-4 text-sm">
@@ -304,23 +392,20 @@ export default function MarketCard({
             <span className="text-2xl font-bold text-white">
               {selectedSide === 'yes' ? t('bet.yes') : t('bet.no')}
             </span>
-            <span className="text-white/70 text-sm ml-2">
-              ({selectedSide === 'yes' ? odds.yesPct : odds.noPct}% • {selectedMultiplier.toFixed(2)}x)
-            </span>
           </div>
 
           {/* Available balance */}
           <div className="flex justify-between items-center bg-gray-800 rounded-xl p-3">
             <span className="text-gray-400 text-sm">Available</span>
-            <span className="text-white font-bold">${walletBalance.toFixed(2)} USDm</span>
+            <span className="text-white font-bold">{fmtLocal(walletBalance)}</span>
           </div>
 
-          {/* Amount selection */}
+          {/* Amount selection — shows local currency */}
           <div>
             <label className="block text-gray-300 text-lg mb-3 font-medium">
               {t('bet.amount')}
             </label>
-            <div className="grid grid-cols-4 gap-2 mb-4">
+            <div className="grid grid-cols-5 gap-2 mb-4">
               {presetAmounts.map((amount) => (
                 <button
                   key={amount}
@@ -332,7 +417,7 @@ export default function MarketCard({
                       : 'bg-gray-700 text-white hover:bg-gray-600'
                   } ${isProcessing ? 'opacity-50' : ''}`}
                 >
-                  ${amount}
+                  {fmtLocal(amount)}
                 </button>
               ))}
             </div>
@@ -343,19 +428,29 @@ export default function MarketCard({
               disabled={isProcessing}
               className="w-full px-4 py-4 bg-gray-700 border-2 border-gray-600 rounded-xl text-white text-xl text-center font-bold focus:ring-2 focus:ring-yellow-400 focus:border-transparent disabled:opacity-50"
               min="1"
+              placeholder={`Amount in ${currencySymbol}`}
             />
+            <p className="text-gray-500 text-xs mt-2 text-center">
+              ≈ {betAmount} USDm
+            </p>
           </div>
 
           {/* Bet summary */}
           <div className="bg-gray-800 rounded-2xl p-4 space-y-3">
             <div className="flex justify-between items-center text-lg">
               <span className="text-gray-400">{t('bet.yourBet')}</span>
-              <span className="text-white font-bold">${betAmount.toFixed(2)}</span>
+              <span className="text-white font-bold">{fmtLocal(betAmount)}</span>
             </div>
             <div className="flex justify-between items-center text-lg">
               <span className="text-gray-400">{t('bet.potentialWin')}</span>
               <span className="text-yellow-400 font-bold text-2xl">
-                ${potentialWin.toFixed(2)}
+                {fmtLocal(potentialWinEstimate)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-gray-500">Net profit</span>
+              <span className="text-green-400 font-medium">
+                +{fmtLocal(Math.max(0, potentialWinEstimate - betAmount))}
               </span>
             </div>
           </div>
@@ -363,13 +458,13 @@ export default function MarketCard({
           {/* Not enough funds */}
           {walletBalance < betAmount && (
             <div className="p-3 bg-yellow-900/50 rounded-xl text-yellow-400 text-center">
-              <p className="font-medium">Not enough funds (${walletBalance.toFixed(2)} available)</p>
+              <p className="font-medium">Not enough funds ({fmtLocal(walletBalance)} available)</p>
               <button
                 onClick={handleGetTokens}
                 disabled={isProcessing}
                 className="mt-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50"
               >
-                🎁 Get 100 USDm free
+                🎁 Get free test tokens
               </button>
             </div>
           )}
@@ -384,7 +479,7 @@ export default function MarketCard({
                 : 'bg-blue-900/50 text-blue-400'
             }`}>
               {status === 'preparing' && '⏳ Preparing...'}
-              {status === 'approving' && '✍️ Step 1/2: Approve token (one-time only)...'}
+              {status === 'approving' && '✍️ Approve token (one-time only)...'}
               {status === 'confirming' && '✍️ Placing your bet...'}
               {status === 'success' && '✅ Bet placed!'}
               {status === 'error' && `❌ ${error}`}
@@ -435,4 +530,3 @@ export default function MarketCard({
     </div>
   );
 }
-
