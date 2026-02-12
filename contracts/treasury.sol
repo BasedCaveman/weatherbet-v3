@@ -25,3 +25,46 @@ contract WeatherBetTreasury {
     modifier onlyOwner() {
         if (msg.sender != owner) revert Unauthorized();
         _;
+    }
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    function getBalance() external view returns (uint256) {
+        return usdm.balanceOf(address(this));
+    }
+
+    function withdraw(uint256 amount) external onlyOwner {
+        if (!usdm.transfer(owner, amount)) revert TransferFailed();
+        emit FundsWithdrawn(owner, amount);
+    }
+
+    function withdrawTo(address to, uint256 amount) external onlyOwner {
+        if (to == address(0)) revert Unauthorized();
+        if (!usdm.transfer(to, amount)) revert TransferFailed();
+        emit FundsWithdrawn(to, amount);
+    }
+
+    function setOrderBook(address _orderBook) external onlyOwner {
+        orderBook = _orderBook;
+        emit OrderBookUpdated(_orderBook);
+    }
+
+    function updateOracleOnOrderBook(address _oracle) external onlyOwner {
+        IWeatherOrderBook(orderBook).setOracle(_oracle);
+    }
+
+    function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert Unauthorized();
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
+    }
+
+    receive() external payable {}
+
+    function withdrawETH(uint256 amount) external onlyOwner {
+        (bool success, ) = owner.call{value: amount}("");
+        if (!success) revert TransferFailed();
+    }
+}
