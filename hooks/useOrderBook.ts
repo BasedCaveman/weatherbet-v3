@@ -35,6 +35,7 @@ export function useMarkets() {
 
   const fetchMarkets = useCallback(async () => {
     try {
+      setLoading(true);
       const provider = new ethers.JsonRpcProvider(CHAIN_CONFIG.rpcUrl);
       const pool = new ethers.Contract(CONTRACT_ADDRESSES.POOL, POOL_ABI, provider);
 
@@ -55,25 +56,28 @@ export function useMarkets() {
             pool.getMarketStatus(i),
           ]).then(([info, status]) => ({
             id: i,
-            cityName: info[0],       // cityName
-            lat: Number(info[1]),     // lat
-            lon: Number(info[2]),     // lon
-            isRainMarket: info[3],    // isRainMarket
-            historicalAvg: Number(info[4]), // historicalAvg
-            startTime: Number(info[5]),    // startTime
-            endTime: Number(info[6]),      // endTime
-            yesPool: status[0],       // yesPool
-            noPool: status[1],        // noPool
-            resolved: status[2],      // resolved
-            outcome: status[3],       // outcome
-            creator: status[4],       // creator
-            cancelled: status[5],     // cancelled
+            // getMarket returns: (cityName, lat, lon, isRainMarket, historicalAvg, startTime, endTime)
+            cityName: info.cityName,
+            lat: Number(info.lat),
+            lon: Number(info.lon),
+            isRainMarket: info.isRainMarket,
+            historicalAvg: Number(info.historicalAvg),
+            startTime: Number(info.startTime),
+            endTime: Number(info.endTime),
+            // getMarketStatus returns: (yesPool, noPool, resolved, outcome, creator, cancelled, creatorEarnings)
+            yesPool: status.yesPool,
+            noPool: status.noPool,
+            resolved: status.resolved,
+            outcome: status.outcome,
+            creator: status.creator,
+            cancelled: status.cancelled,
           }))
         );
       }
 
       const fetchedMarkets = await Promise.all(marketPromises);
       setMarkets(fetchedMarkets);
+      setError(null);
     } catch (err) {
       console.error('Error fetching markets:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch markets');
@@ -106,10 +110,11 @@ export function useMarketOdds(marketId: number) {
 
       const result = await pool.getOdds(marketId);
       setOdds({
-        yesPct: Number(result[0]),
-        noPct: Number(result[1]),
-        yesMultiplier: Number(result[2]) / 1e6,
-        noMultiplier: Number(result[3]) / 1e6,
+        yesPct: Number(result.yesPct),
+        noPct: Number(result.noPct),
+        // Contract returns multiplier × 1e6 (PRECISION), so divide back
+        yesMultiplier: Number(result.yesMultiplier) / 1e6,
+        noMultiplier: Number(result.noMultiplier) / 1e6,
       });
     } catch (err) {
       console.error('Error fetching odds:', err);
@@ -122,4 +127,3 @@ export function useMarketOdds(marketId: number) {
 
   return { odds, refetchOdds: fetchOdds };
 }
-
