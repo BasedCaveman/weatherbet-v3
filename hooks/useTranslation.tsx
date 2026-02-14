@@ -47,7 +47,7 @@ const translations: Record<string, Record<string, string>> = {
     'app.name': 'WeatherBet',
     'header.getStarted': 'Começar',
     'header.connected': 'Conectado',
-    'hero.subtitle': 'Preveja o volume de chuva ou temperatura. Ganhe se acertar!',
+    'hero.subtitle': 'Preveja chuva ou temperatura. Ganhe se acertar!',
     'hero.pricesIn': 'Preços em',
     'market.active': 'Ativo',
     'market.resolved': 'Encerrado',
@@ -205,7 +205,7 @@ const translations: Record<string, Record<string, string>> = {
   },
 };
 
-// Language display config
+// Language display config — used by Header dropdown
 export const LANGUAGE_META: Record<string, { flag: string; label: string }> = {
   en: { flag: '🇬🇧', label: 'EN' },
   pt: { flag: '🇧🇷', label: 'PT' },
@@ -232,24 +232,24 @@ interface TranslationContextType {
   availableLanguages: string[];
 }
 
+// Default context uses English translations directly (never shows raw keys)
+const defaultT = (key: string): string => translations['en']?.[key] || key;
+
 const TranslationContext = createContext<TranslationContextType>({
-  t: (key: string) => key,
+  t: defaultT,
   language: 'en',
   changeLanguage: () => {},
-  availableLanguages: ['en'],
+  availableLanguages: Object.keys(translations),
 });
 
 export function TranslationProvider({ children }: { children: ReactNode }) {
   const [language, setLanguage] = useState<string>('en');
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setLanguage(getBrowserLanguage());
-    setMounted(true);
   }, []);
 
   const t = (key: string): string => {
-    if (!mounted) return translations['en']?.[key] || key;
     return translations[language]?.[key] || translations['en']?.[key] || key;
   };
 
