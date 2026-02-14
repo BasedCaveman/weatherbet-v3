@@ -12,9 +12,9 @@ export const CONTRACT_ADDRESSES = {
   ORACLE: '0x79C021144eC4b3c3c73BDAe81b48c4B3194C51BD',
 } as const;
 
-// Pool ABI — matches deployed WeatherBetPool contract exactly
-// getMarket returns 7 values (no id field — contract doesn't return it)
-// getMarketStatus returns 7 values (includes creatorEarnings)
+// CRITICAL: These ABIs must match the deployed contract EXACTLY
+// getMarket: 7 return values (NO id field)
+// getMarketStatus: 7 return values (WITH creatorEarnings)
 export const POOL_ABI = [
   'function bet(uint256 marketId, bool isYes, uint256 amount)',
   'function claim(uint256 marketId) returns (uint256)',
@@ -30,7 +30,6 @@ export const POOL_ABI = [
   'function climateFundBalance() view returns (uint256)',
 ] as const;
 
-// USDm ABI — includes faucet functions
 export const USDM_ABI = [
   'function approve(address spender, uint256 amount) returns (bool)',
   'function allowance(address owner, address spender) view returns (uint256)',
@@ -40,3 +39,4 @@ export const USDM_ABI = [
   'function transfer(address to, uint256 amount) returns (bool)',
   'function decimals() view returns (uint8)',
 ] as const;
+
