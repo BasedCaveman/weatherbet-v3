@@ -48,6 +48,7 @@ export function useMarkets() {
         return;
       }
 
+      // Fetch BOTH getMarket and getMarketStatus for each market
       const marketPromises = [];
       for (let i = 1; i <= marketCount; i++) {
         marketPromises.push(
@@ -57,20 +58,20 @@ export function useMarkets() {
           ]).then(([info, status]) => ({
             id: i,
             // getMarket returns: (cityName, lat, lon, isRainMarket, historicalAvg, startTime, endTime)
-            cityName: info.cityName,
-            lat: Number(info.lat),
-            lon: Number(info.lon),
-            isRainMarket: info.isRainMarket,
-            historicalAvg: Number(info.historicalAvg),
-            startTime: Number(info.startTime),
-            endTime: Number(info.endTime),
+            cityName: info[0],
+            lat: Number(info[1]),
+            lon: Number(info[2]),
+            isRainMarket: info[3],
+            historicalAvg: Number(info[4]),
+            startTime: Number(info[5]),
+            endTime: Number(info[6]),
             // getMarketStatus returns: (yesPool, noPool, resolved, outcome, creator, cancelled, creatorEarnings)
-            yesPool: status.yesPool,
-            noPool: status.noPool,
-            resolved: status.resolved,
-            outcome: status.outcome,
-            creator: status.creator,
-            cancelled: status.cancelled,
+            yesPool: BigInt(status[0].toString()),
+            noPool: BigInt(status[1].toString()),
+            resolved: status[2],
+            outcome: status[3],
+            creator: status[4],
+            cancelled: status[5],
           }))
         );
       }
@@ -110,11 +111,11 @@ export function useMarketOdds(marketId: number) {
 
       const result = await pool.getOdds(marketId);
       setOdds({
-        yesPct: Number(result.yesPct),
-        noPct: Number(result.noPct),
-        // Contract returns multiplier × 1e6 (PRECISION), so divide back
-        yesMultiplier: Number(result.yesMultiplier) / 1e6,
-        noMultiplier: Number(result.noMultiplier) / 1e6,
+        yesPct: Number(result[0]),
+        noPct: Number(result[1]),
+        // Contract returns multiplier × 1e6 (PRECISION)
+        yesMultiplier: Number(result[2]) / 1e6,
+        noMultiplier: Number(result[3]) / 1e6,
       });
     } catch (err) {
       console.error('Error fetching odds:', err);
@@ -127,3 +128,4 @@ export function useMarketOdds(marketId: number) {
 
   return { odds, refetchOdds: fetchOdds };
 }
+
