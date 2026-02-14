@@ -358,3 +358,4 @@ export default function MarketCard({ market, formatLocal, onConnect }: MarketCar
     </div>
   );
 }
+
