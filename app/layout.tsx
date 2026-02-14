@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ReownProvider } from "../lib/auth/ReownProvider";
+import { TranslationProvider } from "../hooks/useTranslation";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -19,7 +20,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <ReownProvider>
-          {children}
+          <TranslationProvider>
+            {children}
+          </TranslationProvider>
         </ReownProvider>
       </body>
     </html>
