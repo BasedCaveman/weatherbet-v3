@@ -8,7 +8,7 @@ interface ExchangeRates {
 
 const FALLBACK_RATES: ExchangeRates = {
   USD: 1,
-  BRL: 5.0,
+  BRL: 5.22,
   EUR: 0.92,
   GBP: 0.79,
   MXN: 17.5,
@@ -23,10 +23,11 @@ const FALLBACK_RATES: ExchangeRates = {
   INR: 83,
   JPY: 150,
   CNY: 7.2,
-  DEF: 0.92, // Germany uses EUR — kept as alias
+  CAD: 1.36,
+  AUD: 1.55,
 };
 
-// Currencies that have zero decimal convention (e.g., ¥150 not ¥150.00)
+// Currencies where decimals aren't conventional
 const ZERO_DECIMAL_CURRENCIES = new Set(['JPY', 'KRW', 'CLP', 'VND', 'ISK']);
 
 export function useCurrency(targetCurrency: string = 'USD') {
@@ -37,7 +38,6 @@ export function useCurrency(targetCurrency: string = 'USD') {
     async function fetchRates() {
       try {
         const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
-
         if (response.ok) {
           const data = await response.json();
           setRates(data.rates);
@@ -48,7 +48,6 @@ export function useCurrency(targetCurrency: string = 'USD') {
         setLoading(false);
       }
     }
-
     fetchRates();
   }, []);
 
@@ -63,66 +62,49 @@ export function useCurrency(targetCurrency: string = 'USD') {
   };
 
   /**
-   * Smart currency formatter:
-   * - Uses Mi/Bi suffixes for amounts >= 1,000,000 (common in high-rate currencies like NGN, ARS, COP)
-   * - Uses 0 decimals for zero-decimal currencies (JPY, CLP, etc.)
-   * - Uses 2 decimals for everything else
-   * - Keeps numbers readable regardless of exchange rate
+   * Smart currency formatter with compact notation for large numbers.
+   * 
+   * Examples (BRL at 5.22):
+   *   1 USDm     → R$5.22
+   *   50 USDm    → R$261.00
+   *   10000 USDm → R$52,200
+   *   1M USDm    → R$5.2Mi
+   *   1B USDm    → R$5.2Bi
+   * 
+   * Examples (NGN at 1500):
+   *   50 USDm    → ₦75,000
+   *   10000 USDm → ₦15Mi
    */
   const formatCurrency = (amount: number, currency: string = targetCurrency): string => {
     const absAmount = Math.abs(amount);
 
-    // Billions
+    // Guard: NaN or Infinity
+    if (!isFinite(amount)) return formatSimple(0, currency);
+
+    // Billions (≥ 1,000,000,000)
     if (absAmount >= 1_000_000_000) {
       const shortened = amount / 1_000_000_000;
-      const formatted = new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: currency,
-        minimumFractionDigits: shortened % 1 === 0 ? 0 : 1,
-        maximumFractionDigits: 1,
-      }).format(shortened);
-      return `${formatted}Bi`;
+      return formatCompact(shortened, currency, 'Bi');
     }
 
-    // Millions
+    // Millions (≥ 1,000,000)
     if (absAmount >= 1_000_000) {
       const shortened = amount / 1_000_000;
-      const formatted = new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: currency,
-        minimumFractionDigits: shortened % 1 === 0 ? 0 : 1,
-        maximumFractionDigits: 1,
-      }).format(shortened);
-      return `${formatted}Mi`;
+      return formatCompact(shortened, currency, 'Mi');
     }
 
-    // Zero-decimal currencies
+    // Zero-decimal currencies (JPY, CLP, etc.)
     if (ZERO_DECIMAL_CURRENCIES.has(currency)) {
-      return new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: currency,
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }).format(amount);
+      return formatSimple(amount, currency, 0);
     }
 
-    // Large amounts (>= 10,000) — drop decimals for readability
-    if (absAmount >= 10_000) {
-      return new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: currency,
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }).format(amount);
+    // Large amounts (≥ 1,000) — drop decimals for readability
+    if (absAmount >= 1_000) {
+      return formatSimple(amount, currency, 0);
     }
 
-    // Normal amounts
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
+    // Normal amounts — 2 decimals
+    return formatSimple(amount, currency, 2);
   };
 
   return {
@@ -134,3 +116,33 @@ export function useCurrency(targetCurrency: string = 'USD') {
     targetCurrency,
   };
 }
+
+// Helper: format with Intl and append suffix (Mi/Bi)
+function formatCompact(shortened: number, currency: string, suffix: string): string {
+  try {
+    const formatted = new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }).format(shortened);
+    return `${formatted}${suffix}`;
+  } catch {
+    return `${shortened.toFixed(1)}${suffix}`;
+  }
+}
+
+// Helper: standard format with configurable decimals
+function formatSimple(amount: number, currency: string, decimals: number = 2): string {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(amount);
+  } catch {
+    return `${amount.toFixed(decimals)}`;
+  }
+}
+
