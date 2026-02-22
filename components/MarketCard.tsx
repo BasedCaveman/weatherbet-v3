@@ -1,5 +1,5 @@
 'use client';
-
+import { ethers } from 'ethers';
 import { useState, useEffect, useMemo } from 'react';
 import { Market, useMarketOdds } from '../hooks/useOrderBook';
 import { useBetting } from '../hooks/useBetting';
@@ -34,8 +34,8 @@ export default function MarketCard({ market, formatLocal, onConnect }: MarketCar
   const daysRemaining = Math.max(0, Math.floor(timeRemaining / 86400));
   const hoursRemaining = Math.max(0, Math.floor((timeRemaining % 86400) / 3600));
 
-  const yesPoolUsd = Number(market.yesPool) / 1e6;
-  const noPoolUsd = Number(market.noPool) / 1e6;
+  const yesPoolNum = Number(ethers.formatUnits(market.yesPool, 18));
+  const noPoolNum = Number(ethers.formatUnits(market.noPool, 18));
   const totalVolume = yesPoolUsd + noPoolUsd;
 
   // Smart projected odds
