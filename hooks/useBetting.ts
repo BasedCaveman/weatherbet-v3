@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { useAppKitProvider, useAppKitAccount } from '@reown/appkit/react';
-import { CONTRACT_ADDRESSES, POOL_ABI, USDM_ABI, CHAIN_CONFIG } from '../lib/contracts';
+import { CONTRACT_ADDRESSES, POOL_ABI, USDM_ABI, CHAIN_CONFIG, USDM_DECIMALS } from '../lib/contracts';
 
 export type BetStatus = 'idle' | 'preparing' | 'approving' | 'confirming' | 'success' | 'error';
 
@@ -52,7 +52,7 @@ export function useBetting() {
       ]);
 
       setBalances({
-        wallet: ethers.formatUnits(walletBal, 6),
+        wallet: ethers.formatUnits(walletBal, USDM_DECIMALS),
         eth: ethers.formatEther(ethBal),
         canClaimFaucet: canClaim,
       });
@@ -76,8 +76,8 @@ export function useBetting() {
         const result = await pool.getUserBet(marketId, address);
         return {
           marketId,
-          yesAmount: ethers.formatUnits(result[0], 6),
-          noAmount: ethers.formatUnits(result[1], 6),
+          yesAmount: ethers.formatUnits(result[0], USDM_DECIMALS),
+          noAmount: ethers.formatUnits(result[1], USDM_DECIMALS),
           claimed: result[2],
         };
       });
@@ -164,7 +164,7 @@ export function useBetting() {
       const usdm = new ethers.Contract(CONTRACT_ADDRESSES.USDM, USDM_ABI, signer);
       const pool = new ethers.Contract(CONTRACT_ADDRESSES.POOL, POOL_ABI, signer);
 
-      const amountWei = ethers.parseUnits(amountUsd.toString(), 6);
+      const amountWei = ethers.parseUnits(amountUsd.toString(), USDM_DECIMALS);
 
       // Check balance + allowance using READ provider (no wallet popup)
       const readProvider = getReadProvider();
@@ -176,17 +176,16 @@ export function useBetting() {
       ]);
 
       if (walletBalance < amountWei) {
-        const bal = parseFloat(ethers.formatUnits(walletBalance, 6)).toFixed(2);
+        const bal = parseFloat(ethers.formatUnits(walletBalance, USDM_DECIMALS)).toFixed(2);
         setError(`Not enough funds. You have $${bal} but need $${amountUsd.toFixed(2)}.`);
         setStatus('error');
         return false;
       }
 
-      // Step 1: Approve if needed (capped at 10,000 USDm for safety)
+      // Step 1: Approve if needed (one-time MaxUint256)
       if (allowance < amountWei) {
         setStatus('approving');
-        const approvalCap = ethers.parseUnits('10000', 6); // 10,000 USDm
-        const approveTx = await usdm.approve(CONTRACT_ADDRESSES.POOL, approvalCap);
+        const approveTx = await usdm.approve(CONTRACT_ADDRESSES.POOL, ethers.MaxUint256);
         await approveTx.wait();
       }
 
@@ -285,4 +284,3 @@ export function useBetting() {
     reset,
   };
 }
-
