@@ -1,19 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAppKit, useAppKitAccount } from '@reown/appkit/react';
+import { useAppKit, useAppKitAccount, useDisconnect } from '@reown/appkit/react';
 
 interface UseAuthReturn {
   address: string | undefined;
   isConnected: boolean;
   isLoading: boolean;
   connect: () => void;
-  disconnect: () => void;
+  disconnect: () => Promise<void>;
+  openAccount: () => void;
 }
 
 export function useAuth(): UseAuthReturn {
-  const { open, close } = useAppKit();
+  const { open } = useAppKit();
   const { address, isConnected } = useAppKitAccount();
+  const { disconnect: appKitDisconnect } = useDisconnect();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -24,8 +26,13 @@ export function useAuth(): UseAuthReturn {
     open();
   };
 
-  const disconnect = () => {
-    close();
+  const disconnect = async () => {
+    await appKitDisconnect();
+  };
+
+  // Opens the Reown account modal (shows address, balance, disconnect option)
+  const openAccount = () => {
+    open({ view: 'Account' });
   };
 
   return {
@@ -34,5 +41,6 @@ export function useAuth(): UseAuthReturn {
     isLoading,
     connect,
     disconnect,
+    openAccount,
   };
 }
