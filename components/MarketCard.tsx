@@ -36,7 +36,7 @@ export default function MarketCard({ market, formatLocal, onConnect }: MarketCar
 
   const yesPoolNum = Number(ethers.formatUnits(market.yesPool, 18));
   const noPoolNum = Number(ethers.formatUnits(market.noPool, 18));
-  const totalVolume = yesPoolUsd + noPoolUsd;
+  const totalVolume = yesPoolNum + noPoolNum;
 
   // Smart projected odds
   const displayOdds = useMemo(() => {
