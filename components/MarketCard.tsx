@@ -42,16 +42,16 @@ export default function MarketCard({ market, formatLocal, onConnect }: MarketCar
   const displayOdds = useMemo(() => {
     const H = 5;
     if (totalVolume === 0) return { yesPct: 50, noPct: 50, yesMultiplier: 2, noMultiplier: 2, isProjected: false };
-    if (noPoolUsd === 0) {
+    if (noPoolNum === 0) {
       const t = totalVolume + H;
-      return { yesPct: Math.min(95, Math.round((yesPoolUsd / t) * 100)), noPct: Math.max(5, 100 - Math.min(95, Math.round((yesPoolUsd / t) * 100))), yesMultiplier: t / yesPoolUsd, noMultiplier: t / H, isProjected: true };
+      return { yesPct: Math.min(95, Math.round((yesPoolNum / t) * 100)), noPct: Math.max(5, 100 - Math.min(95, Math.round((yesPoolNum / t) * 100))), yesMultiplier: t / yesPoolNum, noMultiplier: t / H, isProjected: true };
     }
-    if (yesPoolUsd === 0) {
+    if (yesPoolNum === 0) {
       const t = totalVolume + H;
-      return { noPct: Math.min(95, Math.round((noPoolUsd / t) * 100)), yesPct: Math.max(5, 100 - Math.min(95, Math.round((noPoolUsd / t) * 100))), yesMultiplier: t / H, noMultiplier: t / noPoolUsd, isProjected: true };
+      return { noPct: Math.min(95, Math.round((noPoolNum / t) * 100)), yesPct: Math.max(5, 100 - Math.min(95, Math.round((noPoolNum / t) * 100))), yesMultiplier: t / H, noMultiplier: t / noPoolNum, isProjected: true };
     }
     return { yesPct: odds.yesPct, noPct: odds.noPct, yesMultiplier: odds.yesMultiplier, noMultiplier: odds.noMultiplier, isProjected: false };
-  }, [totalVolume, yesPoolUsd, noPoolUsd, odds]);
+  }, [totalVolume, yesPoolNum, noPoolNum, odds]);
 
   const walletBalance = parseFloat(balances.wallet);
   const needsFunds = walletBalance < 1;
@@ -59,14 +59,14 @@ export default function MarketCard({ market, formatLocal, onConnect }: MarketCar
   // Accurate potential win
   const potentialWinEstimate = useMemo(() => {
     if (!selectedSide || betAmount <= 0) return 0;
-    const ourSidePool = selectedSide === 'yes' ? yesPoolUsd : noPoolUsd;
+    const ourSidePool = selectedSide === 'yes' ? yesPoolNum : noPoolNum;
     const newTotal = totalVolume + betAmount;
     const newSidePool = ourSidePool + betAmount;
     const payout = (betAmount / newSidePool) * newTotal;
     const profit = payout - betAmount;
     const fee = profit > 0 ? profit * 0.005 : 0;
     return payout - fee;
-  }, [selectedSide, betAmount, totalVolume, yesPoolUsd, noPoolUsd]);
+  }, [selectedSide, betAmount, totalVolume, yesPoolNum, noPoolNum]);
 
   const isProcessing = status === 'preparing' || status === 'approving' || status === 'confirming';
   const presetAmounts = [1, 5, 10, 25, 50];
