@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { ethers } from 'ethers';
-import { CONTRACT_ADDRESSES, POOL_ABI, CHAIN_CONFIG } from '../lib/contracts';
+import { CONTRACT_ADDRESSES, POOL_ABI, CHAIN_CONFIG, USDM_DECIMALS } from '../lib/contracts';
 
 export interface Market {
   id: number;
@@ -35,7 +35,6 @@ export function useMarkets() {
 
   const fetchMarkets = useCallback(async () => {
     try {
-      setLoading(true);
       const provider = new ethers.JsonRpcProvider(CHAIN_CONFIG.rpcUrl);
       const pool = new ethers.Contract(CONTRACT_ADDRESSES.POOL, POOL_ABI, provider);
 
@@ -48,7 +47,6 @@ export function useMarkets() {
         return;
       }
 
-      // Fetch BOTH getMarket and getMarketStatus for each market
       const marketPromises = [];
       for (let i = 1; i <= marketCount; i++) {
         marketPromises.push(
@@ -57,28 +55,25 @@ export function useMarkets() {
             pool.getMarketStatus(i),
           ]).then(([info, status]) => ({
             id: i,
-            // getMarket returns: (cityName, lat, lon, isRainMarket, historicalAvg, startTime, endTime)
-            cityName: info[0],
-            lat: Number(info[1]),
-            lon: Number(info[2]),
-            isRainMarket: info[3],
-            historicalAvg: Number(info[4]),
-            startTime: Number(info[5]),
-            endTime: Number(info[6]),
-            // getMarketStatus returns: (yesPool, noPool, resolved, outcome, creator, cancelled, creatorEarnings)
-            yesPool: BigInt(status[0].toString()),
-            noPool: BigInt(status[1].toString()),
-            resolved: status[2],
-            outcome: status[3],
-            creator: status[4],
-            cancelled: status[5],
+            cityName: info[0],            // cityName
+            lat: Number(info[1]),          // lat
+            lon: Number(info[2]),          // lon
+            isRainMarket: info[3],         // isRainMarket
+            historicalAvg: Number(info[4]),// historicalAvg
+            startTime: Number(info[5]),   // startTime
+            endTime: Number(info[6]),     // endTime
+            yesPool: status[0],           // yesPool (bigint)
+            noPool: status[1],            // noPool (bigint)
+            resolved: status[2],          // resolved
+            outcome: status[3],           // outcome
+            creator: status[4],           // creator
+            cancelled: status[5],         // cancelled
           }))
         );
       }
 
       const fetchedMarkets = await Promise.all(marketPromises);
       setMarkets(fetchedMarkets);
-      setError(null);
     } catch (err) {
       console.error('Error fetching markets:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch markets');
@@ -113,9 +108,9 @@ export function useMarketOdds(marketId: number) {
       setOdds({
         yesPct: Number(result[0]),
         noPct: Number(result[1]),
-        // Contract returns multiplier × 1e6 (PRECISION)
-        yesMultiplier: Number(result[2]) / 1e6,
-        noMultiplier: Number(result[3]) / 1e6,
+        // Contract returns multiplier * 100 (e.g. 200 = 2.00x)
+        yesMultiplier: Number(result[2]) / 100,
+        noMultiplier: Number(result[3]) / 100,
       });
     } catch (err) {
       console.error('Error fetching odds:', err);
@@ -128,4 +123,3 @@ export function useMarketOdds(marketId: number) {
 
   return { odds, refetchOdds: fetchOdds };
 }
-
