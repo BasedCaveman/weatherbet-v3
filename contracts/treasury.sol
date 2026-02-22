@@ -13,7 +13,7 @@ interface IWeatherOrderBook {
 contract WeatherBetTreasury {
     address public owner;
     address public orderBook;
-    IUSDm public constant usdm = IUSDm(0x4605821e41B3e95C78C2e3871bc4597a0939189A);
+    IUSDm public constant usdm = IUSDm(0x3fAA5e48d982cc9428d9DFe3b522Dd8DFa9172f2);
 
     event FundsWithdrawn(address indexed to, uint256 amount);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
