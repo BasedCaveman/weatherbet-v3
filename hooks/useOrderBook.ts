@@ -73,7 +73,26 @@ export function useMarkets() {
       }
 
       const fetchedMarkets = await Promise.all(marketPromises);
-      setMarkets(fetchedMarkets);
+
+// Sort: active first (by time remaining), then resolved/cancelled at bottom
+fetchedMarkets.sort((a, b) => {
+  const now = Date.now() / 1000;
+  const aActive = !a.resolved && !a.cancelled && a.endTime > now;
+  const bActive = !b.resolved && !b.cancelled && b.endTime > now;
+
+  // Active markets first
+  if (aActive && !bActive) return -1;
+  if (!aActive && bActive) return 1;
+
+  // Within active: soonest ending first
+  if (aActive && bActive) return a.endTime - b.endTime;
+
+  // Within resolved: most recent first
+  return b.id - a.id;
+});
+
+setMarkets(fetchedMarkets);
+
     } catch (err) {
       console.error('Error fetching markets:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch markets');
