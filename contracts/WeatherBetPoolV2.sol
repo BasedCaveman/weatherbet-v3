@@ -7,7 +7,7 @@ pragma solidity ^0.8.24;
  * 
  * DEPLOYMENT ARGS (MegaETH Testnet - Chain 6343):
  *   _usdm:              0x3fAA5e48d982cc9428d9DFe3b522Dd8DFa9172f2
- *   _oracle:            0x5833869fdEB4D371b854D7474F5F84B43320FD05
+ *   _oracle:            0x3f73Ca0f8A0CA1356CF870b067fDE918166C6777
  *   _platformAddress:   0x1a9a200a1cC1F701DDE3c2bbBEE7FC7061dC5E8C
  *   _climateFundAddress: 0x5122b4D90185958FAa110a3A02B647C755B977Fd
  */
